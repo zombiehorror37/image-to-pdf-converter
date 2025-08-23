@@ -1,36 +1,46 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+# 🖼️ Image to PDF Converter
 
-## Getting Started
+A simple, fast web app that converts images to PDF files. Drag, drop, and download - all processing happens in your browser for complete privacy.
 
-First, run the development server:
+## ✨ Features
+
+- **Multiple formats**: JPG, PNG, GIF, BMP, WebP, SVG
+- **ZIP support**: Upload ZIP files containing images
+- **Preserve quality**: Maintains original image dimensions and resolution
+- **Drag & drop**: Easy file uploading
+- **Reorder images**: Drag to rearrange
+- **Rotate images**: 90° rotation controls
+- **No uploads**: Everything processed locally in your browser
+
+## 🚀 Quick Start
 
 ```bash
+# Clone and run
+git clone https://github.com/yourusername/image-to-pdf-converter.git
+cd image-to-pdf-converter
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open http://localhost:3000
+🛠️ Built With
 
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
+  Next.js 14 - React framework
+  Tailwind CSS - Styling
+  jsPDF - PDF generation
+  JSZip - ZIP file handling
+  Lucide React - Icons
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+📖 How to Use
 
-## Learn More
+  Upload: Drag images or ZIP files, or click to browse
+  Arrange: Rotate and reorder your images
+  Settings: Choose to preserve original sizes or use standard pages
+  Convert: Click "Convert to PDF" and download
 
-To learn more about Next.js, take a look at the following resources:
+🔒 Privacy
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+All processing happens in your browser. No files are uploaded to any server.
+📄 License
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+MIT License - see LICENSE file for details.
