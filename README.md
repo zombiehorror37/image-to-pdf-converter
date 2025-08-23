@@ -25,7 +25,7 @@ npm run dev
 Open http://localhost:3000
 🛠️ Built With
 
-  Next.js 14 - React framework
+  Next.js - React framework
   Tailwind CSS - Styling
   jsPDF - PDF generation
   JSZip - ZIP file handling
