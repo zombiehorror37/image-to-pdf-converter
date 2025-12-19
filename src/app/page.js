@@ -545,7 +545,7 @@ export default function ImageToPDFConverter() {
           {/* Header */}
           <header className="flex justify-between items-start mb-6 sm:mb-10">
             <div className="flex-1 text-center">
-              <h1 className={`text-3xl sm:text-4xl lg:text-5xl font-bold bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent pb-2`}>
+              <h1 className={`text-3xl sm:text-4xl lg:text-5xl font-bold pb-2 ${isDark ? 'text-white' : 'text-gray-900'}`}>
                 Image to PDF Converter
               </h1>
               <p className={`text-sm sm:text-base mt-2 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
@@ -772,7 +772,7 @@ export default function ImageToPDFConverter() {
               {/* Progress Bar */}
               <div className={`h-2 rounded-full overflow-hidden ${isDark ? 'bg-gray-700' : 'bg-blue-100'}`}>
                 <div
-                  className="h-full bg-gradient-to-r from-blue-500 to-purple-500 transition-all duration-300 ease-out"
+                  className="h-full bg-blue-500 transition-all duration-300 ease-out"
                   style={{ width: `${processingProgress}%` }}
                 />
               </div>
@@ -835,13 +835,17 @@ export default function ImageToPDFConverter() {
                     <button
                       onClick={convertToPDF}
                       disabled={isProcessing}
-                      className="flex-1 sm:flex-none bg-gradient-to-r from-blue-500 to-purple-600 px-6 py-2.5 rounded-xl font-semibold
-                               hover:from-blue-600 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed
-                               flex items-center justify-center gap-2 shadow-lg shadow-blue-500/25
-                               active:scale-[0.98] transition-all text-sm text-white"
+                      className={`flex-1 sm:flex-none px-6 py-2.5 rounded-xl font-medium
+                               disabled:opacity-50 disabled:cursor-not-allowed
+                               flex items-center justify-center gap-2
+                               active:scale-[0.98] transition-all text-sm
+                               ${isDark
+                                 ? 'bg-white text-gray-900 hover:bg-gray-100'
+                                 : 'bg-gray-900 text-white hover:bg-gray-800'
+                               }`}
                     >
                       <Download className="w-4 h-4" />
-                      <span>Convert</span>
+                      <span>Convert to PDF</span>
                     </button>
                   </div>
                 </div>
@@ -935,17 +939,27 @@ export default function ImageToPDFConverter() {
                         </div>
                       )}
 
-                      {/* Page Number Badge */}
+                      {/* Page Number Badge - Sleek pill style */}
                       {!isSelectionMode && (
-                        <div className={`absolute top-2 left-2 z-10
+                        <div className={`absolute top-0 left-0 z-10 transition-all duration-200
                           ${draggedIndex === index || (isTouchDragging && touchDragIndex === index)
-                            ? 'bg-gray-500'
+                            ? 'opacity-50'
                             : dragOverIndex === index && (draggedIndex !== null || isTouchDragging)
-                            ? 'bg-blue-500 scale-110 shadow-lg'
-                            : 'bg-gradient-to-br from-blue-500 to-purple-600'
-                          } text-white font-bold rounded-full w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center
-                          text-xs sm:text-sm transition-all duration-200 shadow-md`}>
-                          {index + 1}
+                            ? 'scale-110'
+                            : ''
+                          }`}>
+                          <div className={`
+                            px-2.5 py-1 sm:px-3 sm:py-1.5
+                            text-[10px] sm:text-xs font-semibold tracking-wide uppercase
+                            rounded-br-xl rounded-tl-xl
+                            backdrop-blur-md
+                            ${isDark
+                              ? 'bg-black/70 text-white/90'
+                              : 'bg-white/90 text-gray-700 shadow-sm'
+                            }
+                          `}>
+                            <span className="opacity-60">Page</span> {index + 1}
+                          </div>
                         </div>
                       )}
 
@@ -1040,9 +1054,13 @@ export default function ImageToPDFConverter() {
                       {/* Drop Zone Indicator */}
                       {dragOverIndex === index && (draggedIndex !== null || isTouchDragging) &&
                        ((draggedIndex !== null && draggedIndex !== index) || (isTouchDragging && touchDragIndex !== index)) && (
-                        <div className="absolute inset-0 bg-blue-500/20 border-2 border-blue-500 border-dashed rounded-xl sm:rounded-2xl flex items-center justify-center backdrop-blur-[2px]">
-                          <div className="bg-blue-500 text-white px-3 py-1.5 rounded-full text-xs sm:text-sm font-semibold shadow-lg">
-                            → Page {index + 1}
+                        <div className={`absolute inset-0 border-2 border-dashed rounded-xl sm:rounded-2xl flex items-center justify-center backdrop-blur-[2px] ${
+                          isDark ? 'bg-white/10 border-white/40' : 'bg-gray-900/10 border-gray-900/40'
+                        }`}>
+                          <div className={`px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium ${
+                            isDark ? 'bg-white/90 text-gray-900' : 'bg-gray-900/90 text-white'
+                          }`}>
+                            Move to page {index + 1}
                           </div>
                         </div>
                       )}
@@ -1068,33 +1086,48 @@ export default function ImageToPDFConverter() {
                 ? 'bg-gray-800/50 backdrop-blur-sm border-gray-700/50'
                 : 'bg-white/80 backdrop-blur-sm border-gray-200 shadow-lg'
             }`}>
-              <h3 className="text-lg sm:text-xl font-semibold mb-6 text-center">How to Use</h3>
+              <h3 className={`text-lg sm:text-xl font-semibold mb-6 text-center ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>How it works</h3>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
                 <div className="text-center sm:text-left">
-                  <div className="bg-gradient-to-br from-blue-500 to-blue-600 w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center mb-3 mx-auto sm:mx-0 text-lg sm:text-xl font-bold shadow-lg shadow-blue-500/25 text-white">
-                    1
+                  <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium mb-3 ${
+                    isDark ? 'bg-gray-700/50 text-gray-300' : 'bg-gray-100 text-gray-600'
+                  }`}>
+                    <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                      isDark ? 'bg-gray-600 text-white' : 'bg-gray-300 text-gray-700'
+                    }`}>1</span>
+                    Upload
                   </div>
-                  <h4 className="font-semibold mb-2 text-sm sm:text-base">Upload Images</h4>
-                  <p className={`text-xs sm:text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                    Drag & drop, browse files, or paste (Ctrl+V)
+                  <h4 className="font-semibold mb-2 text-sm sm:text-base">Add your images</h4>
+                  <p className={`text-xs sm:text-sm ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>
+                    Drag & drop, browse, or paste from clipboard
                   </p>
                 </div>
                 <div className="text-center sm:text-left">
-                  <div className="bg-gradient-to-br from-purple-500 to-purple-600 w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center mb-3 mx-auto sm:mx-0 text-lg sm:text-xl font-bold shadow-lg shadow-purple-500/25 text-white">
-                    2
+                  <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium mb-3 ${
+                    isDark ? 'bg-gray-700/50 text-gray-300' : 'bg-gray-100 text-gray-600'
+                  }`}>
+                    <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                      isDark ? 'bg-gray-600 text-white' : 'bg-gray-300 text-gray-700'
+                    }`}>2</span>
+                    Arrange
                   </div>
-                  <h4 className="font-semibold mb-2 text-sm sm:text-base">Arrange & Edit</h4>
-                  <p className={`text-xs sm:text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                    Reorder pages, rotate images, bulk select
+                  <h4 className="font-semibold mb-2 text-sm sm:text-base">Organize your pages</h4>
+                  <p className={`text-xs sm:text-sm ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>
+                    Reorder, rotate, and bulk edit images
                   </p>
                 </div>
                 <div className="text-center sm:text-left">
-                  <div className="bg-gradient-to-br from-green-500 to-green-600 w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center mb-3 mx-auto sm:mx-0 text-lg sm:text-xl font-bold shadow-lg shadow-green-500/25 text-white">
-                    3
+                  <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium mb-3 ${
+                    isDark ? 'bg-gray-700/50 text-gray-300' : 'bg-gray-100 text-gray-600'
+                  }`}>
+                    <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                      isDark ? 'bg-gray-600 text-white' : 'bg-gray-300 text-gray-700'
+                    }`}>3</span>
+                    Export
                   </div>
-                  <h4 className="font-semibold mb-2 text-sm sm:text-base">Preview & Download</h4>
-                  <p className={`text-xs sm:text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                    Preview your PDF before downloading
+                  <h4 className="font-semibold mb-2 text-sm sm:text-base">Download your PDF</h4>
+                  <p className={`text-xs sm:text-sm ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>
+                    Preview and download instantly
                   </p>
                 </div>
               </div>
@@ -1111,7 +1144,9 @@ export default function ImageToPDFConverter() {
       {/* Touch drag preview overlay */}
       {isTouchDragging && touchDragIndex !== null && (
         <div
-          className="fixed pointer-events-none z-50 w-24 h-24 rounded-xl overflow-hidden shadow-2xl ring-2 ring-blue-500 opacity-80"
+          className={`fixed pointer-events-none z-50 w-24 h-24 rounded-xl overflow-hidden shadow-2xl opacity-90 ${
+            isDark ? 'ring-2 ring-white/50' : 'ring-2 ring-gray-900/50'
+          }`}
           style={{
             left: touchPosition.x - 48,
             top: touchPosition.y - 48,
@@ -1124,8 +1159,10 @@ export default function ImageToPDFConverter() {
             className="w-full h-full object-cover"
             style={{ transform: `rotate(${images[touchDragIndex]?.rotation || 0}deg)` }}
           />
-          <div className="absolute top-1 left-1 bg-blue-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
-            {touchDragIndex + 1}
+          <div className={`absolute top-0 left-0 px-1.5 py-0.5 text-[10px] font-semibold rounded-br-lg ${
+            isDark ? 'bg-black/70 text-white' : 'bg-white/90 text-gray-700'
+          }`}>
+            Page {touchDragIndex + 1}
           </div>
         </div>
       )}
@@ -1147,8 +1184,11 @@ export default function ImageToPDFConverter() {
               <div className="flex items-center gap-2">
                 <button
                   onClick={downloadFromPreview}
-                  className="px-4 py-2 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-lg font-medium
-                           flex items-center gap-2 hover:from-blue-600 hover:to-purple-700 transition-all text-sm"
+                  className={`px-4 py-2 rounded-lg font-medium flex items-center gap-2 transition-all text-sm ${
+                    isDark
+                      ? 'bg-white text-gray-900 hover:bg-gray-100'
+                      : 'bg-gray-900 text-white hover:bg-gray-800'
+                  }`}
                 >
                   <Download className="w-4 h-4" />
                   Download
