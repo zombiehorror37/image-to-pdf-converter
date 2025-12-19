@@ -9,6 +9,7 @@ export default function ImageToPDFConverter() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingStep, setProcessingStep] = useState('');
   const [draggedIndex, setDraggedIndex] = useState(null);
+  const [dragOverIndex, setDragOverIndex] = useState(null);
   
   // FIXED: Complete pdfSettings state
   const [pdfSettings, setPdfSettings] = useState({
@@ -133,10 +134,12 @@ export default function ImageToPDFConverter() {
 
   const handleDragEnd = () => {
     setDraggedIndex(null);
+    setDragOverIndex(null);
   };
 
   const handleDragOverItem = (e, index) => {
     e.preventDefault();
+    setDragOverIndex(index);
     if (draggedIndex !== null && draggedIndex !== index) {
       const newImages = [...images];
       const draggedImage = newImages[draggedIndex];
@@ -461,11 +464,26 @@ export default function ImageToPDFConverter() {
                   onDragStart={(e) => handleDragStart(e, index)}
                   onDragEnd={handleDragEnd}
                   onDragOver={(e) => handleDragOverItem(e, index)}
-                  className={`bg-gray-800 rounded-lg overflow-hidden cursor-move hover:bg-gray-750 transition-colors ${
-                    draggedIndex === index ? 'opacity-50' : ''
+                  className={`bg-gray-800 rounded-lg overflow-hidden cursor-move transition-all duration-200 ${
+                    draggedIndex === index
+                      ? 'opacity-50 scale-95'
+                      : dragOverIndex === index && draggedIndex !== null
+                      ? 'ring-2 ring-blue-500 ring-offset-2 ring-offset-gray-900 scale-105 shadow-xl shadow-blue-500/50'
+                      : 'hover:bg-gray-750'
                   }`}
                 >
                   <div className="aspect-square relative">
+                    {/* Page Number Badge */}
+                    <div className={`absolute top-2 left-2 z-10 ${
+                      draggedIndex === index
+                        ? 'bg-gray-500'
+                        : dragOverIndex === index && draggedIndex !== null
+                        ? 'bg-blue-500 scale-125 shadow-lg'
+                        : 'bg-gradient-to-br from-blue-500 to-purple-600'
+                    } text-white font-bold rounded-full w-8 h-8 flex items-center justify-center text-sm transition-all duration-200`}>
+                      {index + 1}
+                    </div>
+
                     <img
                       src={image.preview}
                       alt={image.name}
@@ -475,20 +493,32 @@ export default function ImageToPDFConverter() {
                     <div className="absolute top-2 right-2 flex space-x-1">
                       <button
                         onClick={() => rotateImage(image.id)}
-                        className="bg-black bg-opacity-50 p-1 rounded hover:bg-opacity-70"
+                        className="bg-black bg-opacity-50 p-1 rounded hover:bg-opacity-70 transition-all"
                       >
                         <RotateCw className="w-4 h-4" />
                       </button>
                       <button
                         onClick={() => removeImage(image.id)}
-                        className="bg-black bg-opacity-50 p-1 rounded hover:bg-opacity-70 text-red-400"
+                        className="bg-black bg-opacity-50 p-1 rounded hover:bg-opacity-70 text-red-400 transition-all"
                       >
                         <X className="w-4 h-4" />
                       </button>
                     </div>
                     <div className="absolute bottom-2 left-2">
-                      <Move className="w-4 h-4 text-gray-400" />
+                      <div className="bg-black bg-opacity-50 p-1 rounded flex items-center space-x-1">
+                        <Move className="w-4 h-4 text-gray-400" />
+                        <span className="text-xs text-gray-400">Drag</span>
+                      </div>
                     </div>
+
+                    {/* Drop Zone Indicator */}
+                    {dragOverIndex === index && draggedIndex !== null && draggedIndex !== index && (
+                      <div className="absolute inset-0 bg-blue-500 bg-opacity-20 border-2 border-blue-500 border-dashed rounded flex items-center justify-center">
+                        <div className="bg-blue-500 text-white px-3 py-1 rounded-full text-sm font-semibold">
+                          Drop here → Page {index + 1}
+                        </div>
+                      </div>
+                    )}
                   </div>
                   <div className="p-3">
                     <p className="text-sm font-medium truncate">{image.name}</p>
