@@ -132,6 +132,8 @@ export default function ImageToPDFConverter() {
     }
 
     setProcessingProgress(100);
+    // Sort images by filename using natural sort
+    newImages.sort(naturalSort);
     setImages(prev => [...prev, ...newImages]);
     setIsProcessing(false);
     setProcessingStep('');
@@ -178,6 +180,13 @@ export default function ImageToPDFConverter() {
       svg: 'image/svg+xml'
     };
     return mimeTypes[ext] || 'image/jpeg';
+  };
+
+  // Natural sort comparator - handles numeric sorting correctly (1, 2, 10 instead of 1, 10, 2)
+  const naturalSort = (a, b) => {
+    const aName = a.name.toLowerCase();
+    const bName = b.name.toLowerCase();
+    return aName.localeCompare(bName, undefined, { numeric: true, sensitivity: 'base' });
   };
 
   // File drop handlers
