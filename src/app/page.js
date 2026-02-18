@@ -34,7 +34,7 @@ export default function ImageToPDFConverter() {
   const [pdfSettings, setPdfSettings] = useState({
     preserveSize: true,
     quality: 0.92,
-    dpi: 300,
+    dpi: 96,
     pageSize: 'A4',
     orientation: 'portrait',
     fitToPage: false
@@ -399,11 +399,14 @@ export default function ImageToPDFConverter() {
       const totalImages = images.length;
 
       if (pdfSettings.preserveSize) {
-        const firstImage = images[0];
-        const processedBlob = await processImage(firstImage);
-        const firstImgElement = await loadImageElement(URL.createObjectURL(processedBlob));
-
+        // Create a PDF where each page is custom-sized for each image
+        // Use the selected DPI setting for page sizing
         const pixelsToMM = 25.4 / pdfSettings.dpi;
+        
+        const firstImage = images[0];
+        const firstProcessedBlob = await processImage(firstImage);
+        const firstImgElement = await loadImageElement(URL.createObjectURL(firstProcessedBlob));
+
         const firstWidth = firstImgElement.width * pixelsToMM;
         const firstHeight = firstImgElement.height * pixelsToMM;
 
@@ -413,7 +416,7 @@ export default function ImageToPDFConverter() {
           format: [firstWidth, firstHeight]
         });
 
-        const firstImageData = await blobToDataURL(processedBlob);
+        const firstImageData = await blobToDataURL(firstProcessedBlob);
         pdf.addImage(firstImageData, 'JPEG', 0, 0, firstWidth, firstHeight);
         setProcessingProgress(Math.round((1 / totalImages) * 100));
 
@@ -426,7 +429,7 @@ export default function ImageToPDFConverter() {
           const width = imgElement.width * pixelsToMM;
           const height = imgElement.height * pixelsToMM;
 
-          pdf.addPage([width, height]);
+          pdf.addPage([width, height], height > width ? 'portrait' : 'landscape');
 
           const imageData = await blobToDataURL(processedBlob);
           pdf.addImage(imageData, 'JPEG', 0, 0, width, height);
@@ -442,7 +445,7 @@ export default function ImageToPDFConverter() {
 
         const pageWidth = pdf.internal.pageSize.getWidth();
         const pageHeight = pdf.internal.pageSize.getHeight();
-        const margin = 10;
+        const margin = 0; // No margins - maximize image size
 
         for (let i = 0; i < images.length; i++) {
           setProcessingStep(`Processing image ${i + 1} of ${images.length}...`);
@@ -451,30 +454,26 @@ export default function ImageToPDFConverter() {
 
           const processedBlob = await processImage(images[i]);
           const imageData = await blobToDataURL(processedBlob);
+          
+          const imgElement = await loadImageElement(URL.createObjectURL(processedBlob));
+          const imgWidth = imgElement.width;
+          const imgHeight = imgElement.height;
+          const aspectRatio = imgWidth / imgHeight;
 
-          if (pdfSettings.fitToPage) {
-            const maxWidth = pageWidth - (margin * 2);
-            const maxHeight = pageHeight - (margin * 2);
+          // Calculate dimensions to maximize image on page while maintaining aspect ratio
+          let finalWidth = pageWidth;
+          let finalHeight = pageWidth / aspectRatio;
 
-            const imgWidth = images[i].rotation === 90 || images[i].rotation === 270
-              ? images[i].height : images[i].width;
-            const imgHeight = images[i].rotation === 90 || images[i].rotation === 270
-              ? images[i].width : images[i].height;
-
-            const widthRatio = maxWidth / (imgWidth * 25.4 / pdfSettings.dpi);
-            const heightRatio = maxHeight / (imgHeight * 25.4 / pdfSettings.dpi);
-            const ratio = Math.min(widthRatio, heightRatio);
-
-            const finalWidth = (imgWidth * 25.4 / pdfSettings.dpi) * ratio;
-            const finalHeight = (imgHeight * 25.4 / pdfSettings.dpi) * ratio;
-
-            const x = (pageWidth - finalWidth) / 2;
-            const y = (pageHeight - finalHeight) / 2;
-
-            pdf.addImage(imageData, 'JPEG', x, y, finalWidth, finalHeight);
-          } else {
-            pdf.addImage(imageData, 'JPEG', margin, margin, pageWidth - (margin * 2), pageHeight - (margin * 2));
+          if (finalHeight > pageHeight) {
+            finalHeight = pageHeight;
+            finalWidth = pageHeight * aspectRatio;
           }
+
+          // Center on page
+          const x = (pageWidth - finalWidth) / 2;
+          const y = (pageHeight - finalHeight) / 2;
+
+          pdf.addImage(imageData, 'JPEG', x, y, finalWidth, finalHeight);
           setProcessingProgress(Math.round(((i + 1) / totalImages) * 100));
         }
       }
@@ -723,6 +722,26 @@ export default function ImageToPDFConverter() {
                     </div>
                   </>
                 )}
+
+                <div>
+                  <label className={`block text-sm font-medium mb-2 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                    DPI: {pdfSettings.dpi}
+                  </label>
+                  <input
+                    type="range"
+                    min="72"
+                    max="300"
+                    step="12"
+                    value={pdfSettings.dpi}
+                    onChange={(e) => setPdfSettings(prev => ({ ...prev, dpi: parseInt(e.target.value) }))}
+                    className={`w-full h-2 rounded-lg appearance-none cursor-pointer accent-blue-500 ${
+                      isDark ? 'bg-gray-700' : 'bg-gray-200'
+                    }`}
+                  />
+                  <p className={`text-xs mt-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                    Lower DPI = larger images, Higher DPI = better print quality
+                  </p>
+                </div>
 
                 <div className={pdfSettings.preserveSize ? 'sm:col-span-2 lg:col-span-4' : ''}>
                   <label className={`block text-sm font-medium mb-2 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
