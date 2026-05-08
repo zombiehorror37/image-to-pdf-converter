@@ -338,7 +338,11 @@ export default function PdfViewer({
 
   const cursor = tool === 'pan' ? 'auto' : tool === 'eraser' ? 'cell' : 'crosshair';
 
-  // Scale factor for SVG text rendering
+  // Scale factors: PDF user units → screen CSS pixels.
+  // sx is used for stroke widths and horizontal sizing so what the user
+  // draws in the editor matches what pdf-lib produces on export (which works
+  // in PDF user units).
+  const sx = renderInfo ? renderInfo.width / renderInfo.pdfWidth : 1;
   const sy = renderInfo ? renderInfo.height / renderInfo.pdfHeight : 1;
 
   const btnBase = (active) =>
@@ -520,7 +524,7 @@ export default function PdfViewer({
                   const c = s.color || COLORS[0];
                   const stroke = `rgb(${c.r * 255},${c.g * 255},${c.b * 255})`;
                   const fill   = s.filled ? `rgba(${c.r * 255},${c.g * 255},${c.b * 255},0.2)` : 'none';
-                  const sw     = s.strokeWidth || 2;
+                  const sw     = (s.strokeWidth || 2) * sx;
                   if (s.type === 'line') {
                     const sp = toScreenPoint(s.x1, s.y1);
                     const ep = toScreenPoint(s.x2, s.y2);
@@ -549,16 +553,28 @@ export default function PdfViewer({
 
                 {/* Stamps */}
                 {annotations.stamps.map((st, i) => {
-                  const sp  = toScreenPoint(st.x, st.y);
-                  const sz  = (st.fontSize || 24) * sy;
-                  const c   = st.color || STAMPS[0].color;
-                  const clr = `rgb(${c.r * 255},${c.g * 255},${c.b * 255})`;
-                  const w   = st.label.length * sz * 0.62;
-                  const pad = 5;
+                  const sp     = toScreenPoint(st.x, st.y);
+                  const szPdf  = st.fontSize || 24;
+                  const sz     = szPdf * sy;
+                  const c      = st.color || STAMPS[0].color;
+                  const clr    = `rgb(${c.r * 255},${c.g * 255},${c.b * 255})`;
+                  // Mirror the export-side estimate so preview width matches the
+                  // exported stamp width (~0.6 ratio for Helvetica-Bold ASCII).
+                  const w      = szPdf * st.label.length * 0.6 * sx;
+                  const pad    = 6 * sy;
+                  // Center the box around the glyphs' visual center. The text
+                  // baseline is at sp.y; glyph mass sits ~0.25·sz above the
+                  // baseline (ascent ~0.7·sz, descent ~0.2·sz). In SVG y grows
+                  // downward, so the visual center is at sp.y - 0.25·sz.
+                  const visualCenter = sp.y - sz * 0.25;
                   return (
                     <g key={`st-${i}`}>
-                      <rect x={sp.x - pad} y={sp.y - sz - pad} width={w + pad * 2} height={sz + pad * 2}
-                        stroke={clr} strokeWidth={1.5} fill="none" />
+                      <rect
+                        x={sp.x - pad}
+                        y={visualCenter - (sz / 2 + pad)}
+                        width={w + pad * 2}
+                        height={sz + pad * 2}
+                        stroke={clr} strokeWidth={1.5 * sx} fill="none" />
                       <text x={sp.x} y={sp.y} fontSize={sz} fill={clr}
                         fontFamily="Helvetica, Arial, sans-serif" fontWeight="bold">
                         {st.label}
@@ -576,7 +592,7 @@ export default function PdfViewer({
                   return (
                     <path key={`i-${i}`} d={d}
                       stroke={`rgb(${c.r * 255},${c.g * 255},${c.b * 255})`}
-                      strokeWidth={stroke.width || 2}
+                      strokeWidth={(stroke.width || 2) * sx}
                       fill="none" strokeLinecap="round" strokeLinejoin="round" />
                   );
                 })}
@@ -593,7 +609,7 @@ export default function PdfViewer({
                 {drawing?.type === 'pen' && drawing.points.length > 1 && (
                   <path
                     d={drawing.points.map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ')}
-                    stroke={color.hex} strokeWidth={strokeWidth}
+                    stroke={color.hex} strokeWidth={strokeWidth * sx}
                     fill="none" strokeLinecap="round" strokeLinejoin="round" />
                 )}
 
@@ -605,15 +621,15 @@ export default function PdfViewer({
                   const h  = Math.abs(drawing.y - drawing.startY);
                   const fillPrev = filled ? `${color.hex}33` : 'none';
                   if (drawing.shapeType === 'ellipse') {
-                    return <ellipse cx={x1 + w / 2} cy={y1 + h / 2} rx={w / 2} ry={h / 2} stroke={color.hex} strokeWidth={strokeWidth} fill={fillPrev} />;
+                    return <ellipse cx={x1 + w / 2} cy={y1 + h / 2} rx={w / 2} ry={h / 2} stroke={color.hex} strokeWidth={strokeWidth * sx} fill={fillPrev} />;
                   }
-                  return <rect x={x1} y={y1} width={w} height={h} stroke={color.hex} strokeWidth={strokeWidth} fill={fillPrev} />;
+                  return <rect x={x1} y={y1} width={w} height={h} stroke={color.hex} strokeWidth={strokeWidth * sx} fill={fillPrev} />;
                 })()}
 
                 {/* In-progress: line */}
                 {drawing?.type === 'line' && (
                   <line x1={drawing.startX} y1={drawing.startY} x2={drawing.x} y2={drawing.y}
-                    stroke={color.hex} strokeWidth={strokeWidth} strokeLinecap="round" />
+                    stroke={color.hex} strokeWidth={strokeWidth * sx} strokeLinecap="round" />
                 )}
               </svg>
             )}

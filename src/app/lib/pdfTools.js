@@ -139,9 +139,12 @@ export const exportEditedPdf = async (sourceDocs, pageOps) => {
       const pad = 6;
       let tw = sz * st.label.length * 0.6;
       try { tw = boldFont.widthOfTextAtSize(st.label, sz); } catch { /* use estimate */ }
+      // Center the box around the glyphs' visual center. PDF y grows up;
+      // ascent ~0.7·sz / descent ~0.2·sz puts the visual center 0.25·sz
+      // above the baseline, so the box bottom sits 0.25·sz below it.
       copied.drawRectangle({
         x: st.x - pad,
-        y: st.y - pad,
+        y: st.y - sz * 0.25 - pad,
         width:  tw + pad * 2,
         height: sz + pad * 2,
         borderColor: rgb(c.r, c.g, c.b),

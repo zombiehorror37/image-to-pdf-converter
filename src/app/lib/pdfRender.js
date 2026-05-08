@@ -51,7 +51,15 @@ export const renderPageToCanvas = async (pdfDoc, pageNumber, targetWidth, rotati
   canvas.style.height = `${viewport.height}px`;
   const ctx = canvas.getContext('2d');
   ctx.scale(dpr, dpr);
-  await page.render({ canvasContext: ctx, viewport, canvas }).promise;
+  // Paint a white background so PDFs without their own page background don't
+  // bleed through as transparent (which becomes black in JPEG thumbnails/exports
+  // and shows the dark UI through the editor canvas).
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.restore();
+  await page.render({ canvasContext: ctx, viewport, canvas, background: '#ffffff' }).promise;
   return { canvas, width: viewport.width, height: viewport.height };
 };
 
