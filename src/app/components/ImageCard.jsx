@@ -61,7 +61,7 @@ export default function ImageCard({
               : ''
       }`}
     >
-      <div className="aspect-square relative group">
+      <div className="relative group" style={{ aspectRatio: '4 / 5' }}>
         {isSelectionMode && (
           <div
             className={`absolute top-2 left-2 z-20 w-6 h-6 rounded-md flex items-center justify-center transition-all ${
@@ -96,7 +96,7 @@ export default function ImageCard({
           src={image.thumb || image.preview}
           alt={image.name}
           loading="lazy"
-          className="w-full h-full object-cover pointer-events-none"
+          className="w-full h-full object-contain pointer-events-none"
           style={{ transform: `rotate(${image.rotation}deg)` }}
           draggable={false}
         />

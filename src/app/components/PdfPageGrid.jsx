@@ -112,12 +112,12 @@ export default function PdfPageGrid({
 
       {isTouchDragging && touchDragIndex !== null && pages[touchDragIndex] && (
         <div
-          className={`fixed pointer-events-none z-50 w-24 h-32 rounded-xl overflow-hidden shadow-2xl opacity-90 ${
+          className={`fixed pointer-events-none z-50 w-24 h-[120px] rounded-xl overflow-hidden shadow-2xl opacity-90 ${
             isDark ? 'ring-2 ring-white/50 bg-gray-800' : 'ring-2 ring-gray-900/50 bg-white'
           }`}
           style={{
             left: touchPosition.x - 48,
-            top: touchPosition.y - 64,
+            top: touchPosition.y - 60,
             transform: 'rotate(3deg)',
           }}
         >

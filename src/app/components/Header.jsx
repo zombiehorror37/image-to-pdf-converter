@@ -2,18 +2,26 @@
 import { Sun, Moon } from 'lucide-react';
 import ModeTabs from './ModeTabs';
 
+const TITLES = {
+  convert: 'Image to PDF',
+  pdfTools: 'PDF Editor',
+};
+
+const SUBTITLES = {
+  convert: 'Turn images into a PDF in seconds · Ctrl+V to paste',
+  pdfTools: 'View, rotate, merge, split, and annotate PDFs locally',
+};
+
 export default function Header({ isDark, onToggleTheme, mode, onModeChange }) {
   return (
     <header className="mb-6 sm:mb-10">
       <div className="flex justify-between items-start mb-6">
         <div className="flex-1 text-center">
           <h1 className={`text-3xl sm:text-4xl lg:text-5xl font-bold pb-2 ${isDark ? 'text-white' : 'text-gray-900'}`}>
-            {mode === 'pdfTools' ? 'PDF Tools' : 'Image to PDF Converter'}
+            {TITLES[mode] ?? TITLES.convert}
           </h1>
           <p className={`text-sm sm:text-base mt-2 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-            {mode === 'pdfTools'
-              ? 'View, rotate, merge, split, and annotate PDFs locally'
-              : 'Convert your images to PDF in seconds • Ctrl+V to paste'}
+            {SUBTITLES[mode] ?? SUBTITLES.convert}
           </p>
         </div>
         <button

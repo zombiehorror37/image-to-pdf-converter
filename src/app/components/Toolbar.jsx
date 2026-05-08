@@ -12,6 +12,7 @@ export default function Toolbar({
   onPreview,
   onConvert,
   onRotateSelected,
+  onRotateAll,
   onDeleteSelected,
   onUndo,
   onRedo,
@@ -27,8 +28,8 @@ export default function Toolbar({
             {imageCount} {imageCount === 1 ? 'Image' : 'Images'} Ready
           </h3>
           <p className={`text-xs sm:text-sm mt-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-            <span className="hidden sm:inline">Drag to reorder • </span>
-            <span className="sm:hidden">Use arrows to reorder • </span>
+            <span className="hidden sm:inline">Drag to reorder · </span>
+            <span className="sm:hidden">Use arrows to reorder · </span>
             Page order reflects PDF order
           </p>
         </div>
@@ -66,23 +67,34 @@ export default function Toolbar({
             <CheckSquare className="w-4 h-4" />
             <span className="hidden sm:inline">{isSelectionMode ? 'Cancel' : 'Select'}</span>
           </button>
-
+          <button
+            onClick={onRotateAll}
+            disabled={isProcessing || imageCount === 0}
+            title="Rotate all images"
+            className={`px-4 py-2.5 rounded-xl font-medium flex items-center gap-2 text-sm transition-all disabled:opacity-50 ${
+              isDark ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
+            }`}
+          >
+            <RotateCw className="w-4 h-4" />
+            <span className="hidden sm:inline">Rotate all</span>
+          </button>
           <button
             onClick={onPreview}
             disabled={isProcessing}
-            className={`px-4 py-2.5 rounded-xl font-medium flex items-center gap-2 text-sm transition-all ${
+            title="Preview PDF"
+            className={`px-4 py-2.5 rounded-xl font-medium flex items-center gap-2 text-sm transition-all disabled:opacity-50 ${
               isDark
-                ? 'bg-gray-700 hover:bg-gray-600 text-white disabled:opacity-50'
-                : 'bg-gray-200 hover:bg-gray-300 text-gray-700 disabled:opacity-50'
+                ? 'bg-gray-700 hover:bg-gray-600 text-white'
+                : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
             }`}
           >
             <Eye className="w-4 h-4" />
             <span className="hidden sm:inline">Preview</span>
           </button>
-
           <button
             onClick={onConvert}
             disabled={isProcessing}
+            title="Save as PDF"
             className={`flex-1 sm:flex-none px-6 py-2.5 rounded-xl font-medium
                      disabled:opacity-50 disabled:cursor-not-allowed
                      flex items-center justify-center gap-2
@@ -90,7 +102,7 @@ export default function Toolbar({
                      ${isDark ? 'bg-white text-gray-900 hover:bg-gray-100' : 'bg-gray-900 text-white hover:bg-gray-800'}`}
           >
             <Download className="w-4 h-4" />
-            <span>Convert to PDF</span>
+            <span>Save as PDF</span>
           </button>
         </div>
       </div>
@@ -118,6 +130,7 @@ export default function Toolbar({
           <button
             onClick={onRotateSelected}
             disabled={selectedCount === 0}
+            title="Rotate selected"
             className={`px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-1.5 transition-all disabled:opacity-50 ${
               isDark ? 'bg-gray-700 hover:bg-gray-600' : 'bg-white hover:bg-gray-50 shadow-sm'
             }`}
@@ -127,6 +140,7 @@ export default function Toolbar({
           <button
             onClick={onDeleteSelected}
             disabled={selectedCount === 0}
+            title="Delete selected"
             className="px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-1.5
                      bg-red-500 hover:bg-red-600 text-white transition-all disabled:opacity-50"
           >

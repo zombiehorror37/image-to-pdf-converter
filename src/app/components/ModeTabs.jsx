@@ -3,8 +3,8 @@ import { FileImage, FileText } from 'lucide-react';
 
 export default function ModeTabs({ isDark, mode, onModeChange }) {
   const tabs = [
-    { id: 'convert', label: 'Image → PDF', icon: FileImage },
-    { id: 'pdfTools', label: 'PDF Tools', icon: FileText },
+    { id: 'convert', label: 'Make PDF', icon: FileImage },
+    { id: 'pdfTools', label: 'Edit PDF', icon: FileText },
   ];
 
   return (
@@ -26,9 +26,7 @@ export default function ModeTabs({ isDark, mode, onModeChange }) {
               onClick={() => onModeChange(tab.id)}
               className={`flex-1 sm:flex-none px-4 sm:px-6 py-2.5 rounded-xl text-sm font-medium flex items-center justify-center gap-2 transition-all ${
                 active
-                  ? isDark
-                    ? 'bg-blue-500 text-white shadow-md'
-                    : 'bg-blue-500 text-white shadow-md'
+                  ? 'bg-blue-500 text-white shadow-md'
                   : isDark
                     ? 'text-gray-300 hover:bg-gray-700/60'
                     : 'text-gray-600 hover:bg-gray-100'

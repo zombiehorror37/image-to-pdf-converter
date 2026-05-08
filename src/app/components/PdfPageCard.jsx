@@ -66,7 +66,7 @@ export default function PdfPageCard({
     >
       <div className={`relative group flex items-center justify-center overflow-hidden ${
         isDark ? 'bg-gray-900/40' : 'bg-gray-50'
-      }`} style={{ aspectRatio: '1 / 1.3' }}>
+      }`} style={{ aspectRatio: '4 / 5' }}>
         {isSelectionMode && (
           <div
             className={`absolute top-2 left-2 z-20 w-6 h-6 rounded-md flex items-center justify-center transition-all ${

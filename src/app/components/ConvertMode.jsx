@@ -2,11 +2,11 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import JSZip from 'jszip';
 import UploadDropzone from './UploadDropzone';
-import PdfSettings from './PdfSettings';
+import SettingsPanel from './SettingsPanel';
 import ProcessingStatus from './ProcessingStatus';
 import Toolbar from './Toolbar';
 import ImageGrid from './ImageGrid';
-import HowItWorks from './HowItWorks';
+import EmptyState from './EmptyState';
 import PreviewModal from './PreviewModal';
 import Toasts from './Toasts';
 import SessionRestoreBanner from './SessionRestoreBanner';
@@ -19,6 +19,9 @@ import { saveSession, loadSession, clearSession } from '../lib/storageDb';
 import { useHistory } from '../hooks/useHistory';
 import { useToasts } from '../hooks/useToasts';
 
+const SESSION_KEY = 'convert';
+const SETTINGS_KEY = 'convert';
+
 const DEFAULT_SETTINGS = {
   preserveSize: true,
   quality: 0.92,
@@ -28,7 +31,7 @@ const DEFAULT_SETTINGS = {
   fitToPage: true,
 };
 
-export default function ConvertMode({ isDark }) {
+export default function ConvertMode({ isDark, isActive, onSwitchMode }) {
   const {
     value: images,
     setValue: setImages,
@@ -58,30 +61,25 @@ export default function ConvertMode({ isDark }) {
 
   const { toasts, push: pushToast, dismiss: dismissToast } = useToasts();
 
-  // Hydrate persisted settings on mount
   useEffect(() => {
-    setPdfSettings(loadSettings(DEFAULT_SETTINGS));
+    setPdfSettings(loadSettings(SETTINGS_KEY, DEFAULT_SETTINGS));
   }, []);
 
   useEffect(() => {
-    saveSettings(pdfSettings);
+    saveSettings(SETTINGS_KEY, pdfSettings);
   }, [pdfSettings]);
 
-  // Look for a saved session on mount
   useEffect(() => {
     let cancelled = false;
-    loadSession().then((session) => {
+    loadSession(SESSION_KEY).then((session) => {
       if (cancelled) return;
       if (session && Array.isArray(session.images) && session.images.length > 0) {
         setRestorableSession(session);
       }
     });
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, []);
 
-  // Debounced session auto-save when images change
   useEffect(() => {
     if (skipNextSessionSave.current) {
       skipNextSessionSave.current = false;
@@ -89,7 +87,7 @@ export default function ConvertMode({ isDark }) {
     }
     if (sessionSaveTimer.current) clearTimeout(sessionSaveTimer.current);
     if (images.length === 0) {
-      clearSession();
+      clearSession(SESSION_KEY);
       return;
     }
     sessionSaveTimer.current = setTimeout(() => {
@@ -103,11 +101,9 @@ export default function ConvertMode({ isDark }) {
         preview: img.preview,
         thumb: img.thumb,
       }));
-      saveSession({ images: lightImages, filename });
+      saveSession(SESSION_KEY, { images: lightImages, filename });
     }, 600);
-    return () => {
-      if (sessionSaveTimer.current) clearTimeout(sessionSaveTimer.current);
-    };
+    return () => { if (sessionSaveTimer.current) clearTimeout(sessionSaveTimer.current); };
   }, [images, filename]);
 
   const restoreSession = () => {
@@ -119,30 +115,49 @@ export default function ConvertMode({ isDark }) {
     pushToast({
       type: 'success',
       title: 'Session restored',
-      message: `${restorableSession.images.length} ${
-        restorableSession.images.length === 1 ? 'image' : 'images'
-      } loaded.`,
+      message: `${restorableSession.images.length} ${restorableSession.images.length === 1 ? 'image' : 'images'} loaded.`,
     });
   };
 
   const discardSession = () => {
-    clearSession();
+    clearSession(SESSION_KEY);
     setRestorableSession(null);
   };
 
   const handleFileUpload = useCallback(
     async (files) => {
       if (!files || files.length === 0) return;
+
+      // Cross-mode routing: if only PDFs are dropped, suggest Edit PDF
+      const pdfFiles = files.filter((f) => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
+      const imageFiles = files.filter((f) => isImageFile(f.name) || f.type === 'application/zip' || f.name.endsWith('.zip'));
+
+      if (pdfFiles.length > 0 && imageFiles.length === 0) {
+        pushToast({
+          type: 'info',
+          title: 'PDF files detected',
+          message: 'Switch to the Edit PDF tab to work with PDFs.',
+          duration: 6000,
+        });
+        return;
+      }
+      if (pdfFiles.length > 0 && imageFiles.length > 0) {
+        pushToast({
+          type: 'info',
+          message: `${pdfFiles.length} PDF${pdfFiles.length > 1 ? 's' : ''} skipped — use the Edit PDF tab for PDFs.`,
+        });
+      }
+
       setIsProcessing(true);
       setProcessingStep('Processing files...');
       setProcessingProgress(0);
 
       const newImages = [];
       const failures = [];
-      const totalFiles = files.length;
+      const totalFiles = imageFiles.length;
 
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
+      for (let i = 0; i < imageFiles.length; i++) {
+        const file = imageFiles[i];
         setProcessingProgress(Math.round((i / totalFiles) * 100));
 
         if (file.type === 'application/zip' || file.name.endsWith('.zip')) {
@@ -155,9 +170,7 @@ export default function ConvertMode({ isDark }) {
               if (!zipFile.dir && isImageFile(entryName)) {
                 try {
                   const blob = await zipFile.async('blob');
-                  const imageFile = new File([blob], entryName, {
-                    type: getImageMimeType(entryName),
-                  });
+                  const imageFile = new File([blob], entryName, { type: getImageMimeType(entryName) });
                   newImages.push(await createImageObject(imageFile));
                 } catch (err) {
                   failures.push({ name: entryName, reason: err?.message || 'Decode failed' });
@@ -180,9 +193,7 @@ export default function ConvertMode({ isDark }) {
 
       setProcessingProgress(100);
       newImages.sort(naturalSort);
-      if (newImages.length > 0) {
-        setImages((prev) => [...prev, ...newImages]);
-      }
+      if (newImages.length > 0) setImages((prev) => [...prev, ...newImages]);
       setIsProcessing(false);
       setProcessingStep('');
       setProcessingProgress(0);
@@ -198,10 +209,7 @@ export default function ConvertMode({ isDark }) {
         });
       }
       if (newImages.length > 0 && failures.length === 0) {
-        pushToast({
-          type: 'success',
-          message: `Added ${newImages.length} ${newImages.length === 1 ? 'image' : 'images'}.`,
-        });
+        pushToast({ type: 'success', message: `Added ${newImages.length} ${newImages.length === 1 ? 'image' : 'images'}.` });
       }
     },
     [setImages, pushToast],
@@ -210,6 +218,7 @@ export default function ConvertMode({ isDark }) {
   // Clipboard paste
   useEffect(() => {
     const handlePaste = (e) => {
+      if (!isActive) return;
       const items = e.clipboardData?.items;
       if (!items) return;
       const imageFiles = [];
@@ -226,41 +235,31 @@ export default function ConvertMode({ isDark }) {
     };
     document.addEventListener('paste', handlePaste);
     return () => document.removeEventListener('paste', handlePaste);
-  }, [handleFileUpload]);
+  }, [handleFileUpload, isActive]);
 
-  // Keyboard shortcuts: Ctrl+Z / Ctrl+Shift+Z (or Cmd on macOS)
+  // Keyboard shortcuts (only when this mode is active)
   useEffect(() => {
     const onKey = (e) => {
+      if (!isActive) return;
       const target = e.target;
-      const isEditable =
-        target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.isContentEditable;
+      const isEditable = target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.isContentEditable;
       if (isEditable) return;
       const meta = e.ctrlKey || e.metaKey;
       if (!meta) return;
       const key = e.key.toLowerCase();
-      if (key === 'z' && !e.shiftKey) {
-        e.preventDefault();
-        undo();
-      } else if ((key === 'z' && e.shiftKey) || key === 'y') {
-        e.preventDefault();
-        redo();
-      }
+      if (key === 'z' && !e.shiftKey) { e.preventDefault(); undo(); }
+      else if ((key === 'z' && e.shiftKey) || key === 'y') { e.preventDefault(); redo(); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [undo, redo]);
+  }, [undo, redo, isActive]);
 
   // Estimated size
   useEffect(() => {
-    if (images.length === 0) {
-      setEstimatedSize(0);
-      return;
-    }
+    if (images.length === 0) { setEstimatedSize(0); return; }
     let totalBytes = 0;
     images.forEach((img) => {
-      const pixels = img.width * img.height;
-      const bytesPerPixel = 0.5 * pdfSettings.quality;
-      totalBytes += pixels * bytesPerPixel;
+      totalBytes += img.width * img.height * 0.5 * pdfSettings.quality;
     });
     totalBytes += images.length * 1024 + 10240;
     setEstimatedSize(totalBytes);
@@ -268,26 +267,19 @@ export default function ConvertMode({ isDark }) {
 
   const removeImage = (id) => {
     setImages((prev) => prev.filter((img) => img.id !== id));
-    setSelectedImages((prev) => {
-      const next = new Set(prev);
-      next.delete(id);
-      return next;
-    });
+    setSelectedImages((prev) => { const n = new Set(prev); n.delete(id); return n; });
   };
 
   const rotateImage = (id) => {
-    setImages((prev) =>
-      prev.map((img) => (img.id === id ? { ...img, rotation: (img.rotation + 90) % 360 } : img)),
-    );
+    setImages((prev) => prev.map((img) => (img.id === id ? { ...img, rotation: (img.rotation + 90) % 360 } : img)));
+  };
+
+  const rotateAll = () => {
+    setImages((prev) => prev.map((img) => ({ ...img, rotation: (img.rotation + 90) % 360 })));
   };
 
   const toggleImageSelection = (id) => {
-    setSelectedImages((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+    setSelectedImages((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   };
 
   const selectAll = () => {
@@ -302,11 +294,9 @@ export default function ConvertMode({ isDark }) {
   };
 
   const rotateSelected = () => {
-    setImages((prev) =>
-      prev.map((img) =>
-        selectedImages.has(img.id) ? { ...img, rotation: (img.rotation + 90) % 360 } : img,
-      ),
-    );
+    setImages((prev) => prev.map((img) =>
+      selectedImages.has(img.id) ? { ...img, rotation: (img.rotation + 90) % 360 } : img,
+    ));
   };
 
   const moveImage = (index, direction) => {
@@ -328,9 +318,7 @@ export default function ConvertMode({ isDark }) {
     });
   };
 
-  const cancelGeneration = () => {
-    abortControllerRef.current?.abort();
-  };
+  const cancelGeneration = () => { abortControllerRef.current?.abort(); };
 
   const runGeneration = async (forPreview) => {
     if (images.length === 0) return;
@@ -367,12 +355,7 @@ export default function ConvertMode({ isDark }) {
       if (err instanceof CancelledError) {
         pushToast({ type: 'info', message: 'PDF generation cancelled.' });
       } else {
-        console.error('Error generating PDF:', err);
-        pushToast({
-          type: 'error',
-          title: 'PDF generation failed',
-          message: err?.message || 'An unknown error occurred. Please try again.',
-        });
+        pushToast({ type: 'error', title: 'PDF generation failed', message: err?.message || 'An unknown error occurred.' });
       }
     } finally {
       abortControllerRef.current = null;
@@ -394,6 +377,7 @@ export default function ConvertMode({ isDark }) {
     a.href = previewPdfUrl;
     a.download = `${filename}.pdf`;
     a.click();
+    pushToast({ type: 'success', message: `${filename}.pdf downloaded.` });
   };
 
   return (
@@ -402,6 +386,7 @@ export default function ConvertMode({ isDark }) {
         <SessionRestoreBanner
           isDark={isDark}
           count={restorableSession.images.length}
+          unit="image"
           updatedAt={restorableSession.updatedAt || Date.now()}
           onRestore={restoreSession}
           onDiscard={discardSession}
@@ -417,11 +402,12 @@ export default function ConvertMode({ isDark }) {
       />
 
       {images.length > 0 && (
-        <PdfSettings
+        <SettingsPanel
+          mode="convert"
           isDark={isDark}
           filename={filename}
           onFilenameChange={setFilename}
-          pdfSettings={pdfSettings}
+          settings={pdfSettings}
           onSettingsChange={setPdfSettings}
           estimatedSize={estimatedSize}
         />
@@ -453,6 +439,7 @@ export default function ConvertMode({ isDark }) {
             onPreview={() => runGeneration(true)}
             onConvert={() => runGeneration(false)}
             onRotateSelected={rotateSelected}
+            onRotateAll={rotateAll}
             onDeleteSelected={deleteSelected}
             onUndo={undo}
             onRedo={redo}
@@ -473,7 +460,9 @@ export default function ConvertMode({ isDark }) {
         </div>
       )}
 
-      {images.length === 0 && !isProcessing && <HowItWorks isDark={isDark} />}
+      {images.length === 0 && !isProcessing && (
+        <EmptyState isDark={isDark} mode="convert" onSwitchMode={onSwitchMode} />
+      )}
 
       {showPreview && (
         <PreviewModal

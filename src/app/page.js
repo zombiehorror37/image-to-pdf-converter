@@ -49,7 +49,14 @@ export default function App() {
             onModeChange={setMode}
           />
 
-          {mode === 'convert' ? <ConvertMode isDark={isDark} /> : <PdfToolsMode isDark={isDark} />}
+          {/* Both modes are always mounted so state survives tab switches.
+              The inactive mode is hidden with display:none. */}
+          <div className={mode !== 'convert' ? 'hidden' : ''}>
+            <ConvertMode isDark={isDark} isActive={mode === 'convert'} onSwitchMode={setMode} />
+          </div>
+          <div className={mode !== 'pdfTools' ? 'hidden' : ''}>
+            <PdfToolsMode isDark={isDark} isActive={mode === 'pdfTools'} onSwitchMode={setMode} />
+          </div>
 
           <footer className={`mt-8 sm:mt-12 text-center text-xs sm:text-sm ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
             <p>Your files are processed locally and never uploaded to any server</p>

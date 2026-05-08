@@ -1,11 +1,12 @@
-// localStorage helpers. IndexedDB session storage lives in storageDb.js (Step 3).
+// localStorage helpers. IndexedDB session storage lives in storageDb.js.
 
-const SETTINGS_KEY = 'pdf-converter-settings';
+const keyFor = (key) => `pdf-converter-settings-${key}`;
 
-export const loadSettings = (defaults) => {
+// key is 'convert' or 'pdfTools'
+export const loadSettings = (key, defaults) => {
   if (typeof window === 'undefined') return defaults;
   try {
-    const raw = localStorage.getItem(SETTINGS_KEY);
+    const raw = localStorage.getItem(keyFor(key));
     if (!raw) return defaults;
     return { ...defaults, ...JSON.parse(raw) };
   } catch {
@@ -13,10 +14,10 @@ export const loadSettings = (defaults) => {
   }
 };
 
-export const saveSettings = (settings) => {
+export const saveSettings = (key, settings) => {
   if (typeof window === 'undefined') return;
   try {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+    localStorage.setItem(keyFor(key), JSON.stringify(settings));
   } catch {
     // localStorage may be unavailable in private modes; silently ignore
   }

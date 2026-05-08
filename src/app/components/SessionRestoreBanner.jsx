@@ -1,8 +1,9 @@
 'use client';
 import { Clock, X } from 'lucide-react';
 
-export default function SessionRestoreBanner({ isDark, count, updatedAt, onRestore, onDiscard }) {
+export default function SessionRestoreBanner({ isDark, count, unit = 'image', updatedAt, onRestore, onDiscard }) {
   const ago = Math.max(1, Math.round((Date.now() - updatedAt) / 60000));
+  const label = count === 1 ? unit : `${unit}s`;
   return (
     <div
       className={`rounded-2xl p-4 sm:p-5 mb-6 border flex items-center gap-3 ${
@@ -15,7 +16,7 @@ export default function SessionRestoreBanner({ isDark, count, updatedAt, onResto
       <div className="flex-1 min-w-0">
         <p className="font-semibold text-sm sm:text-base">Resume previous session?</p>
         <p className={`text-xs sm:text-sm ${isDark ? 'text-yellow-200/80' : 'text-yellow-800'}`}>
-          {count} {count === 1 ? 'image' : 'images'} from {ago} {ago === 1 ? 'min' : 'mins'} ago
+          {count} {label} from {ago} {ago === 1 ? 'min' : 'mins'} ago
         </p>
       </div>
       <button

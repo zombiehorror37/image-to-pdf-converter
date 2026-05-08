@@ -1,8 +1,5 @@
-// IndexedDB-backed session storage. Keeps the in-progress image list and
-// filename so a tab reload doesn't lose work.
-
 const DB_NAME = 'pdf-converter';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const SESSION_STORE = 'session';
 
 let dbPromise;
@@ -12,7 +9,7 @@ const getDb = async () => {
   if (!dbPromise) {
     const { openDB } = await import('idb');
     dbPromise = openDB(DB_NAME, DB_VERSION, {
-      upgrade(db) {
+      upgrade(db, oldVersion) {
         if (!db.objectStoreNames.contains(SESSION_STORE)) {
           db.createObjectStore(SESSION_STORE);
         }
@@ -22,31 +19,32 @@ const getDb = async () => {
   return dbPromise;
 };
 
-export const saveSession = async (session) => {
+// key is 'convert' or 'pdfTools'
+export const saveSession = async (key, session) => {
   try {
     const db = await getDb();
     if (!db) return;
-    await db.put(SESSION_STORE, { ...session, updatedAt: Date.now() }, 'current');
+    await db.put(SESSION_STORE, { ...session, updatedAt: Date.now() }, key);
   } catch (e) {
     console.warn('Failed to save session:', e);
   }
 };
 
-export const loadSession = async () => {
+export const loadSession = async (key) => {
   try {
     const db = await getDb();
     if (!db) return null;
-    return await db.get(SESSION_STORE, 'current');
+    return await db.get(SESSION_STORE, key);
   } catch {
     return null;
   }
 };
 
-export const clearSession = async () => {
+export const clearSession = async (key) => {
   try {
     const db = await getDb();
     if (!db) return;
-    await db.delete(SESSION_STORE, 'current');
+    await db.delete(SESSION_STORE, key);
   } catch {
     // ignore
   }

@@ -221,12 +221,12 @@ export default function ImageGrid({
 
       {isTouchDragging && touchDragIndex !== null && (
         <div
-          className={`fixed pointer-events-none z-50 w-24 h-24 rounded-xl overflow-hidden shadow-2xl opacity-90 ${
+          className={`fixed pointer-events-none z-50 w-24 h-[120px] rounded-xl overflow-hidden shadow-2xl opacity-90 ${
             isDark ? 'ring-2 ring-white/50' : 'ring-2 ring-gray-900/50'
           }`}
           style={{
             left: touchPosition.x - 48,
-            top: touchPosition.y - 48,
+            top: touchPosition.y - 60,
             transform: 'rotate(3deg)',
           }}
         >
