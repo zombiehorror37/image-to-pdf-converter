@@ -36,7 +36,7 @@ export default function SettingsPanel({
           <input
             type="text"
             value={filename}
-            onChange={(e) => onFilenameChange(e.target.value || (isConvert ? 'converted-images' : 'edited'))}
+            onChange={(e) => onFilenameChange(e.target.value)}
             placeholder={isConvert ? 'converted-images' : 'edited'}
             className={`flex-1 p-3 rounded-xl border outline-none transition-all text-sm sm:text-base ${
               isDark
@@ -109,10 +109,10 @@ export default function SettingsPanel({
           </>
         )}
 
-        {/* DPI slider — Convert: PDF DPI; PDF Tools: image-export render width */}
+        {/* DPI slider — Convert: PDF DPI; PDF Tools: image-export render width (pixels) */}
         <div>
           <label className={`block text-sm font-medium mb-2 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-            {isConvert ? `DPI: ${settings.dpi}` : `Export DPI: ${settings.imageDpi}`}
+            {isConvert ? `DPI: ${settings.dpi}` : 'Export resolution'}
           </label>
           {isConvert ? (
             <input
@@ -129,10 +129,10 @@ export default function SettingsPanel({
                 isDark ? 'bg-gray-700/50 border-gray-600 focus:border-blue-500' : 'bg-white border-gray-300 focus:border-blue-500'
               }`}
             >
-              <option value={600}>72 dpi (screen)</option>
-              <option value={900}>150 dpi (web)</option>
-              <option value={1200}>200 dpi (standard)</option>
-              <option value={2400}>400 dpi (print)</option>
+              <option value={600}>Low (600 px wide)</option>
+              <option value={900}>Medium (900 px wide)</option>
+              <option value={1200}>High (1200 px wide)</option>
+              <option value={2400}>Very high (2400 px wide)</option>
             </select>
           )}
           {isConvert && (
@@ -176,6 +176,7 @@ export default function SettingsPanel({
         <div className={`mt-4 pt-4 border-t ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
           <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
             Estimated PDF size: <span className="font-semibold text-blue-500">{formatSize(estimatedSize)}</span>
+            <span className={`ml-1 text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>(rough estimate)</span>
           </p>
         </div>
       )}

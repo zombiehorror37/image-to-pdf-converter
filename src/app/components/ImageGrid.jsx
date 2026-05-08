@@ -22,6 +22,7 @@ export default function ImageGrid({
   onMove,
 }) {
   const containerRef = useRef(null);
+  const longPressTimerRef = useRef(null);
   const [containerWidth, setContainerWidth] = useState(0);
   const [draggedIndex, setDraggedIndex] = useState(null);
   const [dragOverIndex, setDragOverIndex] = useState(null);
@@ -111,13 +112,11 @@ export default function ImageGrid({
     const touch = e.touches[0];
     setTouchDragIndex(index);
     setTouchPosition({ x: touch.clientX, y: touch.clientY });
-
-    const longPressTimer = setTimeout(() => {
+    clearTimeout(longPressTimerRef.current);
+    longPressTimerRef.current = setTimeout(() => {
       setIsTouchDragging(true);
       if (navigator.vibrate) navigator.vibrate(50);
     }, 200);
-
-    e.target.dataset.longPressTimer = longPressTimer;
   };
 
   const handleTouchMove = (e) => {
@@ -137,8 +136,9 @@ export default function ImageGrid({
     }
   };
 
-  const handleTouchEnd = (e) => {
-    clearTimeout(e.target.dataset.longPressTimer);
+  const handleTouchEnd = () => {
+    clearTimeout(longPressTimerRef.current);
+    longPressTimerRef.current = null;
     if (isTouchDragging && dragOverIndex !== null && dragOverIndex !== touchDragIndex) {
       onReorder(touchDragIndex, dragOverIndex);
     }

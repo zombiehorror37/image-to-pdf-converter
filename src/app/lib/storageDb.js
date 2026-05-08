@@ -9,7 +9,7 @@ const getDb = async () => {
   if (!dbPromise) {
     const { openDB } = await import('idb');
     dbPromise = openDB(DB_NAME, DB_VERSION, {
-      upgrade(db, oldVersion) {
+      upgrade(db) {
         if (!db.objectStoreNames.contains(SESSION_STORE)) {
           db.createObjectStore(SESSION_STORE);
         }
@@ -25,8 +25,8 @@ export const saveSession = async (key, session) => {
     const db = await getDb();
     if (!db) return;
     await db.put(SESSION_STORE, { ...session, updatedAt: Date.now() }, key);
-  } catch (e) {
-    console.warn('Failed to save session:', e);
+  } catch {
+    // session saves are best-effort; ignore failures
   }
 };
 

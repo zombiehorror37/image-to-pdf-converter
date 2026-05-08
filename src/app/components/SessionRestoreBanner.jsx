@@ -2,7 +2,9 @@
 import { Clock, X } from 'lucide-react';
 
 export default function SessionRestoreBanner({ isDark, count, unit = 'image', updatedAt, onRestore, onDiscard }) {
-  const ago = Math.max(1, Math.round((Date.now() - updatedAt) / 60000));
+  const diffMs = Date.now() - updatedAt;
+  const diffMins = Math.round(diffMs / 60000);
+  const agoText = diffMins < 1 ? 'just now' : `${diffMins} ${diffMins === 1 ? 'min' : 'mins'} ago`;
   const label = count === 1 ? unit : `${unit}s`;
   return (
     <div
@@ -16,7 +18,7 @@ export default function SessionRestoreBanner({ isDark, count, unit = 'image', up
       <div className="flex-1 min-w-0">
         <p className="font-semibold text-sm sm:text-base">Resume previous session?</p>
         <p className={`text-xs sm:text-sm ${isDark ? 'text-yellow-200/80' : 'text-yellow-800'}`}>
-          {count} {label} from {ago} {ago === 1 ? 'min' : 'mins'} ago
+          {count} {label} from {agoText}
         </p>
       </div>
       <button

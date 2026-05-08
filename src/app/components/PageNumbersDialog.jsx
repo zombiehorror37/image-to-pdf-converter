@@ -96,7 +96,7 @@ export default function PageNumbersDialog({ isDark, totalPages, onClose, onApply
             <div>
               <label className={`block text-xs font-medium mb-1.5 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Start at</label>
               <input type="number" min={1} value={startAt}
-                onChange={e => setStartAt(Math.max(1, Number(e.target.value)))}
+                onChange={e => setStartAt(Math.max(1, parseInt(e.target.value, 10) || 1))}
                 className={select} />
             </div>
             <div>

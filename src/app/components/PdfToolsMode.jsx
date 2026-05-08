@@ -68,7 +68,7 @@ export default function PdfToolsMode({ isDark, isActive, onSwitchMode }) {
   const [showWatermark,   setShowWatermark]   = useState(false);
   const [showPageNumbers, setShowPageNumbers] = useState(false);
   const [showMetadata,    setShowMetadata]    = useState(false);
-  const [metadataBlobUrl, setMetadataBlobUrl] = useState(null);
+  const [metadataBlob, setMetadataBlobUrl] = useState(null);
 
   const [filename, setFilename] = useState('edited');
   const [pdfSettings, setPdfSettings] = useState(DEFAULT_SETTINGS);
@@ -76,8 +76,16 @@ export default function PdfToolsMode({ isDark, isActive, onSwitchMode }) {
 
   const sessionSaveTimer = useRef(null);
   const skipNextSessionSave = useRef(false);
+  const previewPdfUrlRef = useRef(null);
 
   const { toasts, push: pushToast, dismiss: dismissToast } = useToasts();
+
+  // Revoke any lingering preview URL on unmount
+  useEffect(() => {
+    return () => {
+      if (previewPdfUrlRef.current) URL.revokeObjectURL(previewPdfUrlRef.current);
+    };
+  }, []);
 
   // Load persisted settings
   useEffect(() => {
@@ -396,6 +404,7 @@ export default function PdfToolsMode({ isDark, isActive, onSwitchMode }) {
       if (abortControllerRef.current?.signal.aborted) return;
       setProcessingProgress(100);
       const url = URL.createObjectURL(blob);
+      previewPdfUrlRef.current = url;
       setPreviewPdfUrl(url);
       setShowPreview(true);
     } catch (err) {
@@ -410,6 +419,7 @@ export default function PdfToolsMode({ isDark, isActive, onSwitchMode }) {
 
   const closePreview = () => {
     if (previewPdfUrl) URL.revokeObjectURL(previewPdfUrl);
+    previewPdfUrlRef.current = null;
     setPreviewPdfUrl(null);
     setShowPreview(false);
   };
@@ -591,13 +601,13 @@ export default function PdfToolsMode({ isDark, isActive, onSwitchMode }) {
 
   const applyMetadataOp = async (meta) => {
     setShowMetadata(false);
-    if (!metadataBlobUrl) return;
+    if (!metadataBlob) return;
     abortControllerRef.current = new AbortController();
     setIsProcessing(true);
     setProcessingStep('Saving metadata…');
     setProcessingProgress(0);
     try {
-      const blob = await updateMetadata(metadataBlobUrl, meta);
+      const blob = await updateMetadata(metadataBlob, meta);
       setMetadataBlobUrl(null);
       if (abortControllerRef.current?.signal.aborted) return;
       setProcessingProgress(100);
@@ -758,7 +768,7 @@ export default function PdfToolsMode({ isDark, isActive, onSwitchMode }) {
       {showMetadata && (
         <MetadataDialog
           isDark={isDark}
-          pdfBlob={metadataBlobUrl}
+          pdfBlob={metadataBlob}
           onClose={() => { setShowMetadata(false); setMetadataBlobUrl(null); }}
           onApply={applyMetadataOp}
         />

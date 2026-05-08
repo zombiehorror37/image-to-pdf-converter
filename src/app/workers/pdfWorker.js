@@ -62,7 +62,7 @@ const generate = async ({ images, settings }) => {
       );
       const wMm = width * pixelsToMM;
       const hMm = height * pixelsToMM;
-      pdf.addPage([wMm, hMm], hMm > wMm ? 'portrait' : 'landscape');
+      pdf.addPage([wMm, hMm]);
       pdf.addImage(await blobToDataUrl(pBlob), 'JPEG', 0, 0, wMm, hMm);
       self.postMessage({ type: 'progress', progress: Math.round(((i + 1) / total) * 100), step: `Processing image ${i + 1} of ${total}...` });
     }

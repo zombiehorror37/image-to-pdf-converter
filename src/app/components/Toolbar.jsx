@@ -38,6 +38,7 @@ export default function Toolbar({
             onClick={onUndo}
             disabled={!canUndo}
             title="Undo (Ctrl+Z)"
+            aria-label="Undo"
             className={`p-2.5 rounded-xl transition-all disabled:opacity-30 disabled:cursor-not-allowed ${
               isDark ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
             }`}
@@ -48,6 +49,7 @@ export default function Toolbar({
             onClick={onRedo}
             disabled={!canRedo}
             title="Redo (Ctrl+Shift+Z)"
+            aria-label="Redo"
             className={`p-2.5 rounded-xl transition-all disabled:opacity-30 disabled:cursor-not-allowed ${
               isDark ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
             }`}
@@ -71,6 +73,7 @@ export default function Toolbar({
             onClick={onRotateAll}
             disabled={isProcessing || imageCount === 0}
             title="Rotate all images"
+            aria-label="Rotate all images"
             className={`px-4 py-2.5 rounded-xl font-medium flex items-center gap-2 text-sm transition-all disabled:opacity-50 ${
               isDark ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
             }`}
@@ -82,6 +85,7 @@ export default function Toolbar({
             onClick={onPreview}
             disabled={isProcessing}
             title="Preview PDF"
+            aria-label="Preview PDF"
             className={`px-4 py-2.5 rounded-xl font-medium flex items-center gap-2 text-sm transition-all disabled:opacity-50 ${
               isDark
                 ? 'bg-gray-700 hover:bg-gray-600 text-white'

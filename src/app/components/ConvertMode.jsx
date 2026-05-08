@@ -58,8 +58,16 @@ export default function ConvertMode({ isDark, isActive, onSwitchMode }) {
   const abortControllerRef = useRef(null);
   const sessionSaveTimer = useRef(null);
   const skipNextSessionSave = useRef(false);
+  const previewPdfUrlRef = useRef(null);
 
   const { toasts, push: pushToast, dismiss: dismissToast } = useToasts();
+
+  // Revoke any lingering preview URL on unmount
+  useEffect(() => {
+    return () => {
+      if (previewPdfUrlRef.current) URL.revokeObjectURL(previewPdfUrlRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     setPdfSettings(loadSettings(SETTINGS_KEY, DEFAULT_SETTINGS));
@@ -337,6 +345,7 @@ export default function ConvertMode({ isDark, isActive, onSwitchMode }) {
       if (!pdfBlob) return;
       if (forPreview) {
         const url = URL.createObjectURL(pdfBlob);
+        previewPdfUrlRef.current = url;
         setPreviewPdfUrl(url);
         setShowPreview(true);
       } else {
@@ -344,12 +353,13 @@ export default function ConvertMode({ isDark, isActive, onSwitchMode }) {
         const url = URL.createObjectURL(pdfBlob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `${filename}.pdf`;
+        const safeName = filename.trim() || 'converted-images';
+        a.download = `${safeName}.pdf`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
-        pushToast({ type: 'success', message: `${filename}.pdf downloaded.` });
+        pushToast({ type: 'success', message: `${safeName}.pdf downloaded.` });
       }
     } catch (err) {
       if (err instanceof CancelledError) {
@@ -367,17 +377,19 @@ export default function ConvertMode({ isDark, isActive, onSwitchMode }) {
 
   const closePreview = () => {
     if (previewPdfUrl) URL.revokeObjectURL(previewPdfUrl);
+    previewPdfUrlRef.current = null;
     setPreviewPdfUrl(null);
     setShowPreview(false);
   };
 
   const downloadFromPreview = () => {
     if (!previewPdfUrl) return;
+    const safeName = filename.trim() || 'converted-images';
     const a = document.createElement('a');
     a.href = previewPdfUrl;
-    a.download = `${filename}.pdf`;
+    a.download = `${safeName}.pdf`;
     a.click();
-    pushToast({ type: 'success', message: `${filename}.pdf downloaded.` });
+    pushToast({ type: 'success', message: `${safeName}.pdf downloaded.` });
   };
 
   return (

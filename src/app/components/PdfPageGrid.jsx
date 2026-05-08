@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import PdfPageCard from './PdfPageCard';
 
 export default function PdfPageGrid({
@@ -14,6 +14,7 @@ export default function PdfPageGrid({
   onView,
   onMove,
 }) {
+  const longPressTimerRef = useRef(null);
   const [draggedIndex, setDraggedIndex] = useState(null);
   const [dragOverIndex, setDragOverIndex] = useState(null);
   const [touchDragIndex, setTouchDragIndex] = useState(null);
@@ -49,11 +50,11 @@ export default function PdfPageGrid({
     const touch = e.touches[0];
     setTouchDragIndex(index);
     setTouchPosition({ x: touch.clientX, y: touch.clientY });
-    const longPressTimer = setTimeout(() => {
+    clearTimeout(longPressTimerRef.current);
+    longPressTimerRef.current = setTimeout(() => {
       setIsTouchDragging(true);
       if (navigator.vibrate) navigator.vibrate(50);
     }, 200);
-    e.target.dataset.longPressTimer = longPressTimer;
   };
 
   const handleTouchMove = (e) => {
@@ -69,8 +70,9 @@ export default function PdfPageGrid({
     }
   };
 
-  const handleTouchEnd = (e) => {
-    clearTimeout(e.target.dataset.longPressTimer);
+  const handleTouchEnd = () => {
+    clearTimeout(longPressTimerRef.current);
+    longPressTimerRef.current = null;
     if (isTouchDragging && dragOverIndex !== null && dragOverIndex !== touchDragIndex) {
       onReorder(touchDragIndex, dragOverIndex);
     }

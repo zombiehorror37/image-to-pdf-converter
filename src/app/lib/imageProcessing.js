@@ -16,13 +16,13 @@ const makeThumb = (dataUrl, width, height) =>
       ctx.drawImage(img, 0, 0, w, h);
       resolve(canvas.toDataURL('image/jpeg', 0.7));
     };
-    img.onerror = () => resolve(dataUrl);
+    img.onerror = () => resolve(null);
     img.src = dataUrl;
   });
 
 export const createImageObject = async (file) => {
   const { dataUrl, width, height, rotationApplied } = await decodeImageFile(file);
-  const thumb = await makeThumb(dataUrl, width, height);
+  const thumb = (await makeThumb(dataUrl, width, height)) ?? dataUrl;
   return {
     id: Date.now() + Math.random(),
     preview: dataUrl,

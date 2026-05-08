@@ -1,7 +1,10 @@
 'use client';
-import { Eye, Download, X } from 'lucide-react';
+import { useState } from 'react';
+import { Eye, Download, X, AlertTriangle } from 'lucide-react';
 
 export default function PreviewModal({ isDark, pdfUrl, onClose, onDownload }) {
+  const [loadError, setLoadError] = useState(false);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
       <div className={`w-full max-w-5xl h-[90vh] rounded-2xl overflow-hidden flex flex-col ${
@@ -35,8 +38,21 @@ export default function PreviewModal({ isDark, pdfUrl, onClose, onDownload }) {
           </div>
         </div>
         <div className="flex-1 p-4">
-          {pdfUrl && (
-            <iframe src={pdfUrl} className="w-full h-full rounded-lg border-0" title="PDF Preview" />
+          {pdfUrl && !loadError && (
+            <iframe
+              src={pdfUrl}
+              className="w-full h-full rounded-lg border-0"
+              title="PDF Preview"
+              onError={() => setLoadError(true)}
+            />
+          )}
+          {loadError && (
+            <div className="w-full h-full flex flex-col items-center justify-center gap-3">
+              <AlertTriangle className="w-10 h-10 text-yellow-500" />
+              <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                Preview unavailable — download the file to view it.
+              </p>
+            </div>
           )}
         </div>
       </div>

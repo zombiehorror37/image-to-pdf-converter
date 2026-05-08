@@ -82,10 +82,10 @@ export default function PdfActionToolbar({
 
         <div className="flex flex-wrap gap-2 w-full sm:w-auto">
           {/* Undo / Redo */}
-          <button onClick={onUndo} disabled={!canUndo} title="Undo (Ctrl+Z)" className={iconBtn(!canUndo)}>
+          <button onClick={onUndo} disabled={!canUndo} title="Undo (Ctrl+Z)" aria-label="Undo" className={iconBtn(!canUndo)}>
             <Undo2 className="w-4 h-4" />
           </button>
-          <button onClick={onRedo} disabled={!canRedo} title="Redo (Ctrl+Shift+Z)" className={iconBtn(!canRedo)}>
+          <button onClick={onRedo} disabled={!canRedo} title="Redo (Ctrl+Shift+Z)" aria-label="Redo" className={iconBtn(!canRedo)}>
             <Redo2 className="w-4 h-4" />
           </button>
 
@@ -104,21 +104,21 @@ export default function PdfActionToolbar({
 
           {/* Rotate All */}
           <button onClick={onRotateAll} disabled={isProcessing || pageCount === 0}
-            title="Rotate all pages" className={textBtn()}>
+            title="Rotate all pages" aria-label="Rotate all pages" className={textBtn()}>
             <RotateCw className="w-4 h-4" />
             <span className="hidden sm:inline">Rotate all</span>
           </button>
 
           {/* Split */}
           <button onClick={onSplit} disabled={isProcessing || pageCount === 0}
-            title="Split PDF" className={textBtn()}>
+            title="Split PDF" aria-label="Split PDF" className={textBtn()}>
             <Scissors className="w-4 h-4" />
             <span className="hidden sm:inline">Split</span>
           </button>
 
           {/* Export Images */}
           <button onClick={onExportImages} disabled={isProcessing || pageCount === 0}
-            title="Export as images (ZIP)" className={textBtn()}>
+            title="Export as images (ZIP)" aria-label="Export as images" className={textBtn()}>
             <ImageIcon className="w-4 h-4" />
             <span className="hidden sm:inline">Images</span>
           </button>
@@ -152,7 +152,7 @@ export default function PdfActionToolbar({
 
           {/* Preview */}
           <button onClick={onPreview} disabled={isProcessing || pageCount === 0}
-            title="Preview PDF" className={textBtn()}>
+            title="Preview PDF" aria-label="Preview PDF" className={textBtn()}>
             <Eye className="w-4 h-4" />
             <span className="hidden sm:inline">Preview</span>
           </button>
