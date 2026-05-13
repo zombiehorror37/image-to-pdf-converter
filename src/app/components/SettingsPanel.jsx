@@ -112,7 +112,7 @@ export default function SettingsPanel({
         {/* DPI slider — Convert: PDF DPI; PDF Tools: image-export render width (pixels) */}
         <div>
           <label className={`block text-sm font-medium mb-2 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-            {isConvert ? `DPI: ${settings.dpi}` : 'Export resolution'}
+            {isConvert ? `DPI: ${settings.dpi}` : `Export DPI: ${settings.imageDpi}`}
           </label>
           {isConvert ? (
             <input
@@ -129,10 +129,11 @@ export default function SettingsPanel({
                 isDark ? 'bg-gray-700/50 border-gray-600 focus:border-blue-500' : 'bg-white border-gray-300 focus:border-blue-500'
               }`}
             >
-              <option value={600}>Low (600 px wide)</option>
-              <option value={900}>Medium (900 px wide)</option>
-              <option value={1200}>High (1200 px wide)</option>
-              <option value={2400}>Very high (2400 px wide)</option>
+              <option value={72}>Screen (72 DPI)</option>
+              <option value={150}>Draft (150 DPI)</option>
+              <option value={300}>Standard (300 DPI)</option>
+              <option value={600}>High (600 DPI)</option>
+              <option value={1200}>Print (1200 DPI)</option>
             </select>
           )}
           {isConvert && (

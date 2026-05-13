@@ -60,6 +60,7 @@ export default function PdfViewer({
   onPrev,
   onNext,
   onAnnotationsChange,
+  onStampAllPages,
   onRotate,
 }) {
   const containerRef = useRef(null);
@@ -72,26 +73,34 @@ export default function PdfViewer({
   const [strokeWidth,  setStrokeWidth]  = useState(2);
   const [filled,       setFilled]       = useState(false);
   const [fontSize,     setFontSize]     = useState(14);
-  const [stampIndex,   setStampIndex]   = useState(0);
-  const [drawing,      setDrawing]      = useState(null);
+  const [stampIndex,    setStampIndex]    = useState(0);
+  const [stampAllPages, setStampAllPages] = useState(false);
+  const [drawing,       setDrawing]       = useState(null);
   const [pendingText,  setPendingText]  = useState(null);
   const [textValue,    setTextValue]    = useState('');
 
   useEffect(() => {
     if (!pdfDoc || !page) return;
     let active = true;
+    const capturedPageId = page.id;
     (async () => {
       const containerWidth = containerRef.current?.clientWidth || 800;
       const targetWidth = Math.min(containerWidth - 32, 1100);
+      const totalRotation = ((page.internalRotation || 0) + (page.rotation || 0)) % 360;
       const { canvas, width, height } = await renderPageToCanvas(
-        pdfDoc, page.srcPageIndex + 1, targetWidth, page.rotation || 0,
+        pdfDoc, page.srcPageIndex + 1, targetWidth, totalRotation,
       );
       if (!active) return;
       const node = canvasRef.current;
       if (!node) return;
+      // Guard against out-of-order renders: only commit if this is still the active page.
+      if (node.dataset.pageId && node.dataset.pageId !== capturedPageId) return;
+      node.dataset.pageId = capturedPageId;
       node.replaceChildren(canvas);
+      if (!active) return;
       const pdfPage = await pdfDoc.getPage(page.srcPageIndex + 1);
-      const vp = pdfPage.getViewport({ scale: 1, rotation: page.rotation || 0 });
+      if (!active) return;
+      const vp = pdfPage.getViewport({ scale: 1, rotation: totalRotation });
       setRenderInfo({ width, height, pdfWidth: vp.width, pdfHeight: vp.height });
     })();
     return () => { active = false; };
@@ -216,15 +225,12 @@ export default function PdfViewer({
     if (tool === 'stamp') {
       const stamp = STAMPS[stampIndex];
       const pdf = toPdfCoords(p.x, p.y);
-      onAnnotationsChange({
-        ...annotations,
-        stamps: [...annotations.stamps, {
-          x: pdf.x, y: pdf.y,
-          label: stamp.label,
-          color: stamp.color,
-          fontSize: 24,
-        }],
-      });
+      const stampObj = { x: pdf.x, y: pdf.y, label: stamp.label, color: stamp.color, fontSize: 24 };
+      if (stampAllPages && onStampAllPages) {
+        onStampAllPages(stampObj);
+      } else {
+        onAnnotationsChange({ ...annotations, stamps: [...annotations.stamps, stampObj] });
+      }
       return;
     }
     if (tool === 'eraser') {
@@ -471,7 +477,7 @@ export default function PdfViewer({
               </div>
             )}
             {showStamp && (
-              <div className="flex items-center gap-1 flex-wrap">
+              <div className="flex items-center gap-2 flex-wrap">
                 {STAMPS.map((s, i) => (
                   <button
                     key={s.label}
@@ -482,6 +488,21 @@ export default function PdfViewer({
                     {s.label}
                   </button>
                 ))}
+                {totalPages > 1 && (
+                  <button
+                    onClick={() => setStampAllPages((v) => !v)}
+                    className={`px-2 py-1 rounded text-xs font-medium transition-all border ${
+                      stampAllPages
+                        ? 'bg-blue-500 border-blue-500 text-white'
+                        : isDark
+                          ? 'border-gray-600 text-gray-300 hover:border-gray-400'
+                          : 'border-gray-300 text-gray-600 hover:border-gray-500'
+                    }`}
+                    title="Apply stamp to every page at this position"
+                  >
+                    All pages
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -514,7 +535,7 @@ export default function PdfViewer({
                 {annotations.highlights.map((h, i) => {
                   const r = toScreenRect(h.x, h.y, h.w, h.h);
                   return (
-                    <rect key={`h-${i}`} x={r.x} y={r.y} width={r.w} height={r.h}
+                    <rect key={`h-${i}-${h.x.toFixed(1)}-${h.y.toFixed(1)}`} x={r.x} y={r.y} width={r.w} height={r.h}
                       fill="#ffeb3b" fillOpacity="0.4" style={{ mixBlendMode: 'multiply' }} />
                   );
                 })}
@@ -528,13 +549,13 @@ export default function PdfViewer({
                   if (s.type === 'line') {
                     const sp = toScreenPoint(s.x1, s.y1);
                     const ep = toScreenPoint(s.x2, s.y2);
-                    return <line key={`sh-${i}`} x1={sp.x} y1={sp.y} x2={ep.x} y2={ep.y} stroke={stroke} strokeWidth={sw} strokeLinecap="round" />;
+                    return <line key={`sh-${i}-${s.x1?.toFixed(1)}-${s.y1?.toFixed(1)}`} x1={sp.x} y1={sp.y} x2={ep.x} y2={ep.y} stroke={stroke} strokeWidth={sw} strokeLinecap="round" />;
                   }
                   const r = toScreenRect(s.x, s.y, s.w, s.h);
                   if (s.type === 'ellipse') {
-                    return <ellipse key={`sh-${i}`} cx={r.x + r.w / 2} cy={r.y + r.h / 2} rx={r.w / 2} ry={r.h / 2} stroke={stroke} strokeWidth={sw} fill={fill} />;
+                    return <ellipse key={`sh-${i}-${s.x.toFixed(1)}-${s.y.toFixed(1)}`} cx={r.x + r.w / 2} cy={r.y + r.h / 2} rx={r.w / 2} ry={r.h / 2} stroke={stroke} strokeWidth={sw} fill={fill} />;
                   }
-                  return <rect key={`sh-${i}`} x={r.x} y={r.y} width={r.w} height={r.h} stroke={stroke} strokeWidth={sw} fill={fill} />;
+                  return <rect key={`sh-${i}-${s.x.toFixed(1)}-${s.y.toFixed(1)}`} x={r.x} y={r.y} width={r.w} height={r.h} stroke={stroke} strokeWidth={sw} fill={fill} />;
                 })}
 
                 {/* Texts */}
@@ -542,7 +563,7 @@ export default function PdfViewer({
                   const sp = toScreenPoint(t.x, t.y);
                   const c  = t.color || COLORS[0];
                   return (
-                    <text key={`t-${i}`} x={sp.x} y={sp.y}
+                    <text key={`t-${i}-${t.x.toFixed(1)}-${t.y.toFixed(1)}`} x={sp.x} y={sp.y}
                       fontSize={(t.fontSize || 14) * sy}
                       fill={`rgb(${c.r * 255},${c.g * 255},${c.b * 255})`}
                       fontFamily="Helvetica, Arial, sans-serif">
@@ -568,7 +589,7 @@ export default function PdfViewer({
                   // downward, so the visual center is at sp.y - 0.25·sz.
                   const visualCenter = sp.y - sz * 0.25;
                   return (
-                    <g key={`st-${i}`}>
+                    <g key={`st-${i}-${st.x.toFixed(1)}-${st.y.toFixed(1)}-${st.label}`}>
                       <rect
                         x={sp.x - pad}
                         y={visualCenter - (sz / 2 + pad)}
@@ -590,7 +611,7 @@ export default function PdfViewer({
                   const d   = pts.map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
                   const c   = stroke.color || COLORS[1];
                   return (
-                    <path key={`i-${i}`} d={d}
+                    <path key={`i-${i}-${stroke.points.length}-${stroke.points[0]?.x.toFixed(1)}`} d={d}
                       stroke={`rgb(${c.r * 255},${c.g * 255},${c.b * 255})`}
                       strokeWidth={(stroke.width || 2) * sx}
                       fill="none" strokeLinecap="round" strokeLinejoin="round" />

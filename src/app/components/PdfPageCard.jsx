@@ -1,5 +1,6 @@
 'use client';
 import { RotateCw, Trash2, Eye, GripVertical, ChevronUp, ChevronDown, CheckSquare, Highlighter } from 'lucide-react';
+import CardMenu from './CardMenu';
 
 // Compact card for a single PDF page. Uses CSS rotation for the thumb so
 // rotating doesn't require a re-render — the actual page rotation is applied
@@ -26,6 +27,7 @@ export default function PdfPageCard({
   onRemove,
   onView,
   onMove,
+  onReorder,
 }) {
   const isBeingDragged = draggedIndex === index || (isTouchDragging && touchDragIndex === index);
   const isDropTarget =
@@ -111,7 +113,6 @@ export default function PdfPageCard({
             src={page.thumb}
             alt={`Page ${index + 1}`}
             className="max-w-full max-h-full object-contain pointer-events-none"
-            style={{ transform: `rotate(${page.rotation}deg)` }}
             draggable={false}
           />
         ) : (
@@ -164,6 +165,7 @@ export default function PdfPageCard({
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>
+                <CardMenu isDark={isDark} index={index} total={total} onReorder={onReorder} />
               </div>
             </div>
 

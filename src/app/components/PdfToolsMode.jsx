@@ -8,6 +8,7 @@ import PdfViewer from './PdfViewer';
 import ProcessingStatus from './ProcessingStatus';
 import Toasts from './Toasts';
 import SplitDialog from './SplitDialog';
+import ExportRangeDialog from './ExportRangeDialog';
 import SettingsPanel from './SettingsPanel';
 import EmptyState from './EmptyState';
 import PreviewModal from './PreviewModal';
@@ -21,6 +22,7 @@ import { loadSettings, saveSettings } from '../lib/storage';
 import { saveSession, loadSession, clearSession } from '../lib/storageDb';
 import { useHistory } from '../hooks/useHistory';
 import { useToasts } from '../hooks/useToasts';
+import { formatSize } from '../lib/utils';
 
 const THUMB_WIDTH = 240;
 const SESSION_KEY = 'pdfTools';
@@ -28,7 +30,16 @@ const SETTINGS_KEY = 'pdfTools';
 
 const DEFAULT_SETTINGS = {
   imageQuality: 0.92,
-  imageDpi: 1200,
+  imageDpi: 300,
+};
+
+// Old pixel-width values (600/900/1200/2400) → nearest DPI equivalent.
+const migrateSettings = (s) => {
+  const pixelToDpi = { 600: 150, 900: 200, 1200: 300, 2400: 600 };
+  if (s.imageDpi >= 600 && pixelToDpi[s.imageDpi]) {
+    return { ...s, imageDpi: pixelToDpi[s.imageDpi] };
+  }
+  return s;
 };
 
 const downloadBlob = (blob, name) => {
@@ -62,7 +73,8 @@ export default function PdfToolsMode({ isDark, isActive, onSwitchMode }) {
   const [selectedPages, setSelectedPages] = useState(new Set());
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [activePageId, setActivePageId] = useState(null);
-  const [showSplit,       setShowSplit]       = useState(false);
+  const [showSplit,          setShowSplit]          = useState(false);
+  const [showExportRange,    setShowExportRange]    = useState(false);
   const [showPreview,     setShowPreview]     = useState(false);
   const [previewPdfUrl,   setPreviewPdfUrl]   = useState(null);
   const [showWatermark,   setShowWatermark]   = useState(false);
@@ -87,9 +99,20 @@ export default function PdfToolsMode({ isDark, isActive, onSwitchMode }) {
     };
   }, []);
 
-  // Load persisted settings
+  // Close stale preview when pages are edited
   useEffect(() => {
-    setPdfSettings(loadSettings(SETTINGS_KEY, DEFAULT_SETTINGS));
+    if (showPreview && pages.length > 0) {
+      if (previewPdfUrlRef.current) URL.revokeObjectURL(previewPdfUrlRef.current);
+      previewPdfUrlRef.current = null;
+      setPreviewPdfUrl(null);
+      setShowPreview(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pages]);
+
+  // Load persisted settings, migrating any old pixel-width values to DPI.
+  useEffect(() => {
+    setPdfSettings(migrateSettings(loadSettings(SETTINGS_KEY, DEFAULT_SETTINGS)));
   }, []);
 
   useEffect(() => {
@@ -125,6 +148,7 @@ export default function PdfToolsMode({ isDark, isActive, onSwitchMode }) {
         srcDocId: p.srcDocId,
         srcPageIndex: p.srcPageIndex,
         docName: p.docName,
+        internalRotation: p.internalRotation || 0,
         rotation: p.rotation,
         annotations: p.annotations,
         thumb: p.thumb,
@@ -218,11 +242,13 @@ export default function PdfToolsMode({ isDark, isActive, onSwitchMode }) {
           const docId = `${Date.now()}-${f}-${Math.random().toString(36).slice(2, 8)}`;
           docsRef.current.set(docId, { name: file.name, file, pdfDoc });
           for (let p = 0; p < pdfDoc.numPages; p++) {
+            const pdfPage = await pdfDoc.getPage(p + 1);
             newPages.push({
               id: `${docId}-${p}`,
               srcDocId: docId,
               srcPageIndex: p,
               docName: file.name,
+              internalRotation: pdfPage.rotate || 0,
               rotation: 0,
               annotations: { highlights: [], inks: [], texts: [], shapes: [], stamps: [] },
               thumb: null,
@@ -259,7 +285,10 @@ export default function PdfToolsMode({ isDark, isActive, onSwitchMode }) {
     [setPages, pushToast],
   );
 
-  // Background thumbnail rendering
+  // Signature changes whenever a page is added, removed, rotated, or its thumb is invalidated.
+  const thumbSignature = pages.map((p) => `${p.id}:${p.rotation}:${p.thumb ? '1' : '0'}`).join(',');
+
+  // Background thumbnail rendering — re-runs whenever any page needs a new thumb.
   useEffect(() => {
     let cancelled = false;
     const pending = pages.filter((p) => !p.thumb);
@@ -271,7 +300,8 @@ export default function PdfToolsMode({ isDark, isActive, onSwitchMode }) {
         const doc = docsRef.current.get(page.srcDocId);
         if (!doc) continue;
         try {
-          const { canvas } = await renderPageToCanvas(doc.pdfDoc, page.srcPageIndex + 1, THUMB_WIDTH, 0);
+          const totalRotation = ((page.internalRotation || 0) + (page.rotation || 0)) % 360;
+          const { canvas } = await renderPageToCanvas(doc.pdfDoc, page.srcPageIndex + 1, THUMB_WIDTH, totalRotation);
           if (cancelled) return;
           const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
           setPagesQuiet((prev) => prev.map((p) => (p.id === page.id ? { ...p, thumb: dataUrl } : p)));
@@ -283,7 +313,7 @@ export default function PdfToolsMode({ isDark, isActive, onSwitchMode }) {
 
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pages.length]);
+  }, [thumbSignature]);
 
   // Keyboard shortcuts (only when active)
   useEffect(() => {
@@ -303,11 +333,12 @@ export default function PdfToolsMode({ isDark, isActive, onSwitchMode }) {
   }, [undo, redo, isActive]);
 
   const updatePage = (id, patch) => {
-    setPages((prev) => prev.map((p) => (p.id === id ? { ...p, ...patch } : p)));
+    const invalidatesThumb = 'annotations' in patch || 'rotation' in patch;
+    setPages((prev) => prev.map((p) => (p.id === id ? { ...p, ...patch, ...(invalidatesThumb ? { thumb: null } : {}) } : p)));
   };
 
   const rotatePage = (id) => {
-    setPages((prev) => prev.map((p) => (p.id === id ? { ...p, rotation: (p.rotation + 90) % 360 } : p)));
+    setPages((prev) => prev.map((p) => (p.id === id ? { ...p, rotation: (p.rotation + 90) % 360, thumb: null } : p)));
   };
 
   const removePage = (id) => {
@@ -346,18 +377,28 @@ export default function PdfToolsMode({ isDark, isActive, onSwitchMode }) {
 
   const rotateSelected = () => {
     setPages((prev) => prev.map((p) =>
-      selectedPages.has(p.id) ? { ...p, rotation: (p.rotation + 90) % 360 } : p,
+      selectedPages.has(p.id) ? { ...p, rotation: (p.rotation + 90) % 360, thumb: null } : p,
     ));
   };
 
   const rotateAll = () => {
-    setPages((prev) => prev.map((p) => ({ ...p, rotation: (p.rotation + 90) % 360 })));
+    setPages((prev) => prev.map((p) => ({ ...p, rotation: (p.rotation + 90) % 360, thumb: null })));
   };
 
   const deleteSelected = () => {
     setPages((prev) => prev.filter((p) => !selectedPages.has(p.id)));
     setSelectedPages(new Set());
     setIsSelectionMode(false);
+  };
+
+  // Select pages by 1-based range pairs [[s,e], ...]
+  const selectPagesByRange = (ranges) => {
+    const ids = new Set();
+    for (const [s, e] of ranges) {
+      pages.slice(s - 1, e).forEach((p) => ids.add(p.id));
+    }
+    setSelectedPages(ids);
+    if (!isSelectionMode) setIsSelectionMode(true);
   };
 
   const sourceDocsForExport = useMemo(() => {
@@ -381,6 +422,33 @@ export default function PdfToolsMode({ isDark, isActive, onSwitchMode }) {
       setProcessingProgress(100);
       downloadBlob(blob, `${filename}.pdf`);
       pushToast({ type: 'success', message: `${filename}.pdf downloaded.` });
+    } catch (err) {
+      if (!abortControllerRef.current?.signal.aborted) {
+        pushToast({ type: 'error', title: 'Export failed', message: err?.message || 'Could not produce PDF.' });
+      }
+    } finally {
+      abortControllerRef.current = null;
+      setIsProcessing(false);
+      setProcessingStep('');
+      setProcessingProgress(0);
+    }
+  };
+
+  const exportRange = async (ranges) => {
+    setShowExportRange(false);
+    if (!ranges || ranges.length === 0) return;
+    const subset = ranges.flatMap(([s, e]) => pages.slice(s - 1, e));
+    if (subset.length === 0) return;
+    abortControllerRef.current = new AbortController();
+    setIsProcessing(true);
+    setProcessingStep('Building PDF...');
+    setProcessingProgress(0);
+    try {
+      const blob = await exportEditedPdf(sourceDocsForExport, subset);
+      if (abortControllerRef.current?.signal.aborted) return;
+      setProcessingProgress(100);
+      downloadBlob(blob, `${filename}-range.pdf`);
+      pushToast({ type: 'success', message: `${subset.length} pages exported as ${filename}-range.pdf.` });
     } catch (err) {
       if (!abortControllerRef.current?.signal.aborted) {
         pushToast({ type: 'error', title: 'Export failed', message: err?.message || 'Could not produce PDF.' });
@@ -471,10 +539,14 @@ export default function PdfToolsMode({ isDark, isActive, onSwitchMode }) {
         const page = pages[i];
         const doc = docsRef.current.get(page.srcDocId);
         if (!doc) continue;
+        // Convert true DPI to pixel width: PDF points are 1/72 inch, so page width in inches × DPI.
+        const pdfPage = await doc.pdfDoc.getPage(page.srcPageIndex + 1);
+        const baseVp = pdfPage.getViewport({ scale: 1, rotation: page.rotation || 0 });
+        const targetWidth = Math.min(Math.round((baseVp.width / 72) * pdfSettings.imageDpi), 8000);
         const { canvas } = await renderPageToCanvas(
           doc.pdfDoc,
           page.srcPageIndex + 1,
-          pdfSettings.imageDpi,
+          targetWidth,
           page.rotation || 0,
         );
         const blob = await new Promise((res) => canvas.toBlob(res, 'image/jpeg', pdfSettings.imageQuality));
@@ -485,7 +557,7 @@ export default function PdfToolsMode({ isDark, isActive, onSwitchMode }) {
       setProcessingProgress(95);
       const zipBlob = await zip.generateAsync({ type: 'blob' });
       downloadBlob(zipBlob, `${filename}.zip`);
-      pushToast({ type: 'success', message: `${pages.length} pages exported as ${filename}.zip.` });
+      pushToast({ type: 'success', message: `${pages.length} pages exported as ${filename}.zip — ${formatSize(zipBlob.size)} at ${pdfSettings.imageDpi} DPI.` });
     } catch (err) {
       if (!abortControllerRef.current?.signal.aborted) {
         pushToast({ type: 'error', title: 'Image export failed', message: err?.message || 'Could not render pages.' });
@@ -684,6 +756,7 @@ export default function PdfToolsMode({ isDark, isActive, onSwitchMode }) {
             onRotateSelected={rotateSelected}
             onDeleteSelected={deleteSelected}
             onExtractSelected={extractSelected}
+            onSelectRange={selectPagesByRange}
             onUndo={undo}
             onRedo={redo}
             canUndo={canUndo}
@@ -691,6 +764,7 @@ export default function PdfToolsMode({ isDark, isActive, onSwitchMode }) {
             onExportPdf={exportPdf}
             onExportImages={exportImages}
             onSplit={() => setShowSplit(true)}
+            onExportRange={() => setShowExportRange(true)}
             onPreview={openPreview}
             onWatermark={() => setShowWatermark(true)}
             onPageNumbers={() => setShowPageNumbers(true)}
@@ -726,6 +800,18 @@ export default function PdfToolsMode({ isDark, isActive, onSwitchMode }) {
           onPrev={() => activeIndex > 0 && setActivePageId(pages[activeIndex - 1].id)}
           onNext={() => activeIndex < pages.length - 1 && setActivePageId(pages[activeIndex + 1].id)}
           onAnnotationsChange={(annotations) => updatePage(activePage.id, { annotations })}
+          onStampAllPages={(stamp) => {
+            setPages((prev) => prev.map((p) => ({
+              ...p,
+              thumb: null,
+              annotations: {
+                highlights: [], inks: [], texts: [], shapes: [], stamps: [],
+                ...p.annotations,
+                stamps: [...(p.annotations?.stamps || []), stamp],
+              },
+            })));
+            pushToast({ type: 'success', message: `Stamp applied to all ${pages.length} pages.` });
+          }}
           onRotate={rotatePage}
         />
       )}
@@ -736,6 +822,15 @@ export default function PdfToolsMode({ isDark, isActive, onSwitchMode }) {
           totalPages={pages.length}
           onClose={() => setShowSplit(false)}
           onSplit={performSplit}
+        />
+      )}
+
+      {showExportRange && (
+        <ExportRangeDialog
+          isDark={isDark}
+          totalPages={pages.length}
+          onClose={() => setShowExportRange(false)}
+          onExport={exportRange}
         />
       )}
 

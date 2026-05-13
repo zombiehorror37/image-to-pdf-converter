@@ -1,5 +1,6 @@
 'use client';
 import { RotateCw, X, ChevronUp, ChevronDown, GripVertical, CheckSquare } from 'lucide-react';
+import CardMenu from './CardMenu';
 
 export default function ImageCard({
   image,
@@ -22,6 +23,7 @@ export default function ImageCard({
   onRotate,
   onRemove,
   onMove,
+  onReorder,
 }) {
   const isBeingDragged = draggedIndex === index || (isTouchDragging && touchDragIndex === index);
   const isDropTarget =
@@ -129,6 +131,7 @@ export default function ImageCard({
             >
               <X className="w-4 h-4" />
             </button>
+            <CardMenu isDark={isDark} index={index} total={total} onReorder={onReorder} />
           </div>
         )}
 

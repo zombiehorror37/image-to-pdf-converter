@@ -108,6 +108,7 @@ export default function PdfPageGrid({
             onRemove={onRemove}
             onView={onView}
             onMove={onMove}
+            onReorder={onReorder}
           />
         ))}
       </div>

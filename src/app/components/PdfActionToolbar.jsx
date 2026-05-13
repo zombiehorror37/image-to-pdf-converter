@@ -3,8 +3,9 @@ import { useEffect, useRef, useState } from 'react';
 import {
   Download, Eye, Image as ImageIcon, CheckSquare, Square,
   RotateCw, Trash2, Undo2, Redo2, Scissors,
-  Droplets, Hash, FileText, ChevronDown,
+  Droplets, Hash, FileText, ChevronDown, ListFilter,
 } from 'lucide-react';
+import { parseRanges } from '../lib/utils';
 
 export default function PdfActionToolbar({
   isDark,
@@ -19,6 +20,7 @@ export default function PdfActionToolbar({
   onRotateSelected,
   onDeleteSelected,
   onExtractSelected,
+  onSelectRange,
   onUndo,
   onRedo,
   canUndo,
@@ -26,12 +28,14 @@ export default function PdfActionToolbar({
   onExportPdf,
   onExportImages,
   onSplit,
+  onExportRange,
   onPreview,
   onWatermark,
   onPageNumbers,
   onMetadata,
 }) {
   const [toolsOpen, setToolsOpen] = useState(false);
+  const [rangeInput, setRangeInput] = useState('');
   const menuRef = useRef(null);
 
   // Close menu on outside click
@@ -143,6 +147,7 @@ export default function PdfActionToolbar({
               <div className={`absolute right-0 top-full mt-1.5 w-52 rounded-xl shadow-lg border z-20 py-1 ${
                 isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
               }`}>
+                {menuItem(ListFilter, 'Export Range…',      onExportRange)}
                 {menuItem(Droplets,  'Add Watermark…',     onWatermark)}
                 {menuItem(Hash,      'Add Page Numbers…',  onPageNumbers)}
                 {menuItem(FileText,  'Edit Metadata…',     onMetadata)}
@@ -186,6 +191,34 @@ export default function PdfActionToolbar({
           <span className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
             {selectedCount} selected
           </span>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              const ranges = parseRanges(rangeInput, pageCount);
+              if (ranges.length > 0) onSelectRange?.(ranges);
+            }}
+            className="flex items-center gap-1"
+          >
+            <input
+              type="text"
+              value={rangeInput}
+              onChange={(e) => setRangeInput(e.target.value)}
+              placeholder="e.g. 1-3, 5-7"
+              className={`px-2.5 py-1.5 rounded-lg text-sm border outline-none w-32 transition-all ${
+                isDark
+                  ? 'bg-gray-700 border-gray-600 focus:border-blue-500 text-white placeholder-gray-500'
+                  : 'bg-white border-gray-300 focus:border-blue-500 placeholder-gray-400'
+              }`}
+            />
+            <button
+              type="submit"
+              className={`px-2.5 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                isDark ? 'bg-gray-700 hover:bg-gray-600' : 'bg-white hover:bg-gray-50 shadow-sm'
+              }`}
+            >
+              Select
+            </button>
+          </form>
           <div className="flex-1" />
           <button
             onClick={onRotateSelected}

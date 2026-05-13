@@ -52,7 +52,7 @@ export const exportEditedPdf = async (sourceDocs, pageOps) => {
     const src = loaded.get(op.srcDocId);
     if (!src) continue;
     const [copied] = await out.copyPages(src, [op.srcPageIndex]);
-    if (op.rotation) copied.setRotation(degrees(op.rotation));
+    if (op.rotation) copied.setRotation(degrees(((op.internalRotation || 0) + op.rotation) % 360));
 
     const ann = op.annotations || {};
 

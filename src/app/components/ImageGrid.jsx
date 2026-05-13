@@ -170,6 +170,7 @@ export default function ImageGrid({
       onRotate={onRotate}
       onRemove={onRemove}
       onMove={onMove}
+      onReorder={onReorder}
     />
   );
 
