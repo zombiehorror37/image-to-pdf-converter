@@ -1,11 +1,11 @@
 'use client';
-import { RotateCw, Trash2, Eye, GripVertical, ChevronUp, ChevronDown, CheckSquare, Highlighter } from 'lucide-react';
+import { memo } from 'react';
+import { RotateCw, Trash2, Eye, GripVertical, ChevronUp, ChevronDown, CheckSquare, Highlighter, Loader2 } from 'lucide-react';
 import CardMenu from './CardMenu';
 
-// Compact card for a single PDF page. Uses CSS rotation for the thumb so
-// rotating doesn't require a re-render — the actual page rotation is applied
-// during export by pdf-lib.
-export default function PdfPageCard({
+// CSS rotation for the thumb means rotating doesn't require a re-render —
+// actual page rotation is applied during export by pdf-lib.
+function PdfPageCard({
   page,
   index,
   total,
@@ -111,12 +111,17 @@ export default function PdfPageCard({
         {page.thumb ? (
           <img
             src={page.thumb}
-            alt={`Page ${index + 1}`}
+            alt=""
+            loading="lazy"
+            decoding="async"
             className="max-w-full max-h-full object-contain pointer-events-none"
             draggable={false}
           />
         ) : (
-          <div className="text-xs text-gray-400 p-4">Rendering…</div>
+          <div className={`flex flex-col items-center gap-2 text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+            <Loader2 className="w-5 h-5 animate-spin" />
+            <span>Rendering…</span>
+          </div>
         )}
 
         {!isSelectionMode && (
@@ -127,12 +132,12 @@ export default function PdfPageCard({
                   e.stopPropagation();
                   onView(page.id);
                 }}
+                aria-label="View and annotate page"
                 className={`p-2 rounded-lg transition-all ${
                   isDark
                     ? 'bg-black/60 backdrop-blur-sm hover:bg-black/80'
                     : 'bg-white/80 backdrop-blur-sm hover:bg-white shadow-sm'
                 }`}
-                title="View / annotate"
               >
                 <Eye className="w-4 h-4" />
               </button>
@@ -142,12 +147,12 @@ export default function PdfPageCard({
                     e.stopPropagation();
                     onRotate(page.id);
                   }}
+                  aria-label="Rotate page"
                   className={`p-2 rounded-lg transition-all ${
                     isDark
                       ? 'bg-black/60 backdrop-blur-sm hover:bg-black/80'
                       : 'bg-white/80 backdrop-blur-sm hover:bg-white shadow-sm'
                   }`}
-                  title="Rotate"
                 >
                   <RotateCw className="w-4 h-4" />
                 </button>
@@ -156,12 +161,12 @@ export default function PdfPageCard({
                     e.stopPropagation();
                     onRemove(page.id);
                   }}
+                  aria-label="Delete page"
                   className={`p-2 rounded-lg text-red-400 transition-all ${
                     isDark
                       ? 'bg-black/60 backdrop-blur-sm hover:bg-red-500/80 hover:text-white'
                       : 'bg-white/80 backdrop-blur-sm hover:bg-red-500 hover:text-white shadow-sm'
                   }`}
-                  title="Delete"
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>
@@ -175,7 +180,8 @@ export default function PdfPageCard({
                   e.stopPropagation();
                   onView(page.id);
                 }}
-                className={`p-1.5 rounded-lg transition-all ${
+                aria-label="View and annotate page"
+                className={`p-1.5 rounded-lg transition-all active:scale-95 ${
                   isDark ? 'bg-black/60 backdrop-blur-sm active:bg-black/80' : 'bg-white/80 backdrop-blur-sm active:bg-white'
                 }`}
               >
@@ -186,7 +192,8 @@ export default function PdfPageCard({
                   e.stopPropagation();
                   onRotate(page.id);
                 }}
-                className={`p-1.5 rounded-lg transition-all ${
+                aria-label="Rotate page"
+                className={`p-1.5 rounded-lg transition-all active:scale-95 ${
                   isDark ? 'bg-black/60 backdrop-blur-sm active:bg-black/80' : 'bg-white/80 backdrop-blur-sm active:bg-white'
                 }`}
               >
@@ -197,7 +204,8 @@ export default function PdfPageCard({
                   e.stopPropagation();
                   onRemove(page.id);
                 }}
-                className={`p-1.5 rounded-lg text-red-400 transition-all ${
+                aria-label="Delete page"
+                className={`p-1.5 rounded-lg text-red-400 transition-all active:scale-95 ${
                   isDark ? 'bg-black/60 backdrop-blur-sm active:bg-red-500/80' : 'bg-white/80 backdrop-blur-sm active:bg-red-500'
                 }`}
               >
@@ -212,7 +220,8 @@ export default function PdfPageCard({
                   onMove(index, 'up');
                 }}
                 disabled={index === 0}
-                className={`p-1.5 rounded-lg disabled:opacity-30 transition-all ${
+                aria-label="Move page up"
+                className={`p-1.5 rounded-lg disabled:opacity-30 transition-all active:scale-95 ${
                   isDark ? 'bg-black/60 backdrop-blur-sm active:bg-blue-500/80' : 'bg-white/80 backdrop-blur-sm active:bg-blue-500'
                 }`}
               >
@@ -224,7 +233,8 @@ export default function PdfPageCard({
                   onMove(index, 'down');
                 }}
                 disabled={index === total - 1}
-                className={`p-1.5 rounded-lg disabled:opacity-30 transition-all ${
+                aria-label="Move page down"
+                className={`p-1.5 rounded-lg disabled:opacity-30 transition-all active:scale-95 ${
                   isDark ? 'bg-black/60 backdrop-blur-sm active:bg-blue-500/80' : 'bg-white/80 backdrop-blur-sm active:bg-blue-500'
                 }`}
               >
@@ -255,3 +265,5 @@ export default function PdfPageCard({
     </div>
   );
 }
+
+export default memo(PdfPageCard);

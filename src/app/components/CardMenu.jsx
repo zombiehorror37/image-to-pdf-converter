@@ -80,7 +80,9 @@ export default function CardMenu({ isDark, index, total, onReorder }) {
             ? 'bg-black/60 backdrop-blur-sm hover:bg-black/80'
             : 'bg-white/80 backdrop-blur-sm hover:bg-white shadow-sm'
         }`}
-        title="More options"
+        aria-label="More options"
+        aria-expanded={open}
+        aria-haspopup="true"
       >
         <MoreVertical className="w-4 h-4" />
       </button>

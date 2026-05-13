@@ -11,9 +11,19 @@ export default function UploadDropzone({ isDark, mode, onDrop, onFiles, inputId 
     onDrop(Array.from(e.dataTransfer.files));
   };
   const handleChange = (e) => onFiles(Array.from(e.target.files));
+  const triggerInput = () => document.getElementById(inputId).click();
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      triggerInput();
+    }
+  };
 
   return (
     <div
+      role="button"
+      tabIndex={0}
+      aria-label={isPdfMode ? 'Upload PDF files' : 'Upload images or ZIP files'}
       className={`relative border-2 border-dashed rounded-2xl p-6 sm:p-10 lg:p-12 mb-6 sm:mb-8 text-center
                  transition-all duration-300 cursor-pointer active:scale-[0.99] group ${
         isDark
@@ -22,7 +32,8 @@ export default function UploadDropzone({ isDark, mode, onDrop, onFiles, inputId 
       }`}
       onDragOver={onDragOver}
       onDrop={handleDrop}
-      onClick={() => document.getElementById(inputId).click()}
+      onClick={triggerInput}
+      onKeyDown={handleKeyDown}
     >
       <div className="flex flex-col items-center space-y-4">
         <div className="flex space-x-3 sm:space-x-4">
@@ -75,6 +86,8 @@ export default function UploadDropzone({ isDark, mode, onDrop, onFiles, inputId 
         accept={accept}
         onChange={handleChange}
         className="hidden"
+        aria-hidden="true"
+        tabIndex={-1}
       />
     </div>
   );

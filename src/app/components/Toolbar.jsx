@@ -58,6 +58,7 @@ export default function Toolbar({
           </button>
           <button
             onClick={onToggleSelectionMode}
+            aria-label={isSelectionMode ? 'Cancel selection' : 'Select images'}
             className={`px-4 py-2.5 rounded-xl font-medium flex items-center gap-2 text-sm transition-all ${
               isSelectionMode
                 ? 'bg-blue-500 text-white'

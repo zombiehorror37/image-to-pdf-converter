@@ -96,6 +96,7 @@ export default function PdfActionToolbar({
           {/* Select */}
           <button
             onClick={onToggleSelection}
+            aria-label={isSelectionMode ? 'Cancel selection' : 'Select pages'}
             className={`px-4 py-2.5 rounded-xl font-medium flex items-center gap-2 text-sm transition-all ${
               isSelectionMode
                 ? 'bg-blue-500 text-white'
@@ -133,6 +134,9 @@ export default function PdfActionToolbar({
               onClick={() => setToolsOpen(!toolsOpen)}
               disabled={isProcessing || pageCount === 0}
               title="Document tools"
+              aria-label="Document tools"
+              aria-expanded={toolsOpen}
+              aria-haspopup="true"
               className={`px-4 py-2.5 rounded-xl font-medium flex items-center gap-1.5 text-sm transition-all disabled:opacity-50 ${
                 toolsOpen
                   ? isDark ? 'bg-gray-600 text-white' : 'bg-gray-300 text-gray-700'

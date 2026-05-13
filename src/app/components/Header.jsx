@@ -31,7 +31,7 @@ export default function Header({ isDark, onToggleTheme, mode, onModeChange }) {
               ? 'bg-gray-800 hover:bg-gray-700 text-yellow-400'
               : 'bg-white hover:bg-gray-100 text-gray-700 shadow-md'
           }`}
-          title={`Switch to ${isDark ? 'light' : 'dark'} mode`}
+          aria-label={`Switch to ${isDark ? 'light' : 'dark'} mode`}
         >
           {isDark ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
         </button>

@@ -1,46 +1,63 @@
-# 🖼️ Image to PDF Converter
+# Image to PDF Converter & PDF Editor
 
-A simple, fast web app that converts images to PDF files. Drag, drop, and download - all processing happens in your browser for complete privacy.
+A fast, private web app for working with images and PDFs — fully in your browser. No file uploads, no accounts, no limits.
 
-## ✨ Features
+## Features
 
-- **Multiple formats**: JPG, PNG, GIF, BMP, WebP, SVG
-- **ZIP support**: Upload ZIP files containing images
-- **Preserve quality**: Maintains original image dimensions and resolution
-- **Drag & drop**: Easy file uploading
-- **Reorder images**: Drag to rearrange
-- **Rotate images**: 90° rotation controls
-- **No uploads**: Everything processed locally in your browser
+### Make PDF (image → PDF)
+- **Multiple formats**: JPG, PNG, GIF, BMP, WebP, SVG, HEIC, TIFF, AVIF
+- **ZIP support**: Upload a ZIP archive of images and convert them all at once
+- **Clipboard paste**: Ctrl+V to paste images directly from clipboard
+- **Drag & drop**: Easy file uploading with drop zone
+- **Reorder pages**: Drag-and-drop or use up/down arrows on mobile
+- **Rotate images**: 90° rotation controls per image or for all at once
+- **Select & bulk edit**: Selection mode for rotating or deleting multiple images
+- **Undo / Redo**: Full history for your edits
+- **Settings**: Preserve original image dimensions, choose quality, DPI, page size, orientation, and fit-to-page
 
-## 🚀 Quick Start
+### Edit PDF
+- **Merge**: Combine multiple PDFs into one
+- **Split**: Extract pages or ranges into separate PDFs
+- **Reorder / Delete pages**: Drag pages around or remove them
+- **Rotate pages**: Per-page rotation applied on export
+- **Annotations**: Highlights, freehand drawing, text, shapes, and stamps
+- **Watermark**: Add a text watermark to all pages
+- **Page numbers**: Automatically number pages
+- **Metadata editor**: Edit title, author, subject, and keywords
+- **Export to images**: Save all pages as JPEGs in a ZIP archive
+- **Session persistence**: Your work is saved in the browser and restored on reload
+
+### Privacy
+- **No uploads**: All processing happens locally in your browser. Files never leave your device.
+
+## Quick Start
 
 ```bash
-# Clone and run
 git clone https://github.com/yourusername/image-to-pdf-converter.git
 cd image-to-pdf-converter
 npm install
 npm run dev
 ```
 
-Open http://localhost:3000
-🛠️ Built With
+Open [http://localhost:3000](http://localhost:3000)
 
-  Next.js - React framework
-  Tailwind CSS - Styling
-  jsPDF - PDF generation
-  JSZip - ZIP file handling
-  Lucide React - Icons
+## Built With
 
-📖 How to Use
+- [Next.js](https://nextjs.org/) — React framework
+- [Tailwind CSS](https://tailwindcss.com/) — Styling
+- [jsPDF](https://github.com/parallax/jsPDF) — PDF generation from images
+- [pdf-lib](https://pdf-lib.js.org/) — PDF manipulation (merge, split, annotate, metadata)
+- [PDF.js](https://mozilla.github.io/pdf.js/) — PDF rendering & thumbnails
+- [JSZip](https://stuk.github.io/jszip/) — ZIP file handling
+- [Lucide React](https://lucide.dev/) — Icons
 
-  Upload: Drag images or ZIP files, or click to browse
-  Arrange: Rotate and reorder your images
-  Settings: Choose to preserve original sizes or use standard pages
-  Convert: Click "Convert to PDF" and download
+## How to Use
 
-🔒 Privacy
+1. **Upload**: Switch between "Make PDF" and "Edit PDF" tabs. Drop files or click to browse.
+2. **Arrange**: Rotate and reorder images or pages. Use Ctrl+V to paste images from clipboard.
+3. **Settings** (Make PDF): Choose page size, orientation, quality, and whether to preserve original dimensions.
+4. **Export**: Click "Save as PDF" to download. All processing is instant and local.
 
-All processing happens in your browser. No files are uploaded to any server.
-📄 License
+## License
 
-MIT License - see LICENSE file for details.
+MIT License — see LICENSE file for details.

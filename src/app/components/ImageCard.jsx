@@ -1,8 +1,9 @@
 'use client';
+import { memo } from 'react';
 import { RotateCw, X, ChevronUp, ChevronDown, GripVertical, CheckSquare } from 'lucide-react';
 import CardMenu from './CardMenu';
 
-export default function ImageCard({
+function ImageCard({
   image,
   index,
   total,
@@ -98,6 +99,7 @@ export default function ImageCard({
           src={image.thumb || image.preview}
           alt={image.name}
           loading="lazy"
+          decoding="async"
           className="w-full h-full object-contain pointer-events-none"
           style={{ transform: `rotate(${image.rotation}deg)` }}
           draggable={false}
@@ -110,6 +112,7 @@ export default function ImageCard({
                 e.stopPropagation();
                 onRotate(image.id);
               }}
+              aria-label="Rotate image"
               className={`p-2 rounded-lg transition-all ${
                 isDark
                   ? 'bg-black/60 backdrop-blur-sm hover:bg-black/80'
@@ -123,6 +126,7 @@ export default function ImageCard({
                 e.stopPropagation();
                 onRemove(image.id);
               }}
+              aria-label="Remove image"
               className={`p-2 rounded-lg text-red-400 transition-all ${
                 isDark
                   ? 'bg-black/60 backdrop-blur-sm hover:bg-red-500/80 hover:text-white'
@@ -142,7 +146,8 @@ export default function ImageCard({
                 e.stopPropagation();
                 onRotate(image.id);
               }}
-              className={`p-1.5 rounded-lg transition-all ${
+              aria-label="Rotate image"
+              className={`p-1.5 rounded-lg transition-all active:scale-95 ${
                 isDark
                   ? 'bg-black/60 backdrop-blur-sm active:bg-black/80'
                   : 'bg-white/80 backdrop-blur-sm active:bg-white'
@@ -155,7 +160,8 @@ export default function ImageCard({
                 e.stopPropagation();
                 onRemove(image.id);
               }}
-              className={`p-1.5 rounded-lg text-red-400 transition-all ${
+              aria-label="Remove image"
+              className={`p-1.5 rounded-lg text-red-400 transition-all active:scale-95 ${
                 isDark
                   ? 'bg-black/60 backdrop-blur-sm active:bg-red-500/80'
                   : 'bg-white/80 backdrop-blur-sm active:bg-red-500'
@@ -174,7 +180,8 @@ export default function ImageCard({
                 onMove(index, 'up');
               }}
               disabled={index === 0}
-              className={`p-1.5 rounded-lg disabled:opacity-30 transition-all ${
+              aria-label="Move image up"
+              className={`p-1.5 rounded-lg disabled:opacity-30 transition-all active:scale-95 ${
                 isDark
                   ? 'bg-black/60 backdrop-blur-sm active:bg-blue-500/80'
                   : 'bg-white/80 backdrop-blur-sm active:bg-blue-500'
@@ -188,7 +195,8 @@ export default function ImageCard({
                 onMove(index, 'down');
               }}
               disabled={index === total - 1}
-              className={`p-1.5 rounded-lg disabled:opacity-30 transition-all ${
+              aria-label="Move image down"
+              className={`p-1.5 rounded-lg disabled:opacity-30 transition-all active:scale-95 ${
                 isDark
                   ? 'bg-black/60 backdrop-blur-sm active:bg-blue-500/80'
                   : 'bg-white/80 backdrop-blur-sm active:bg-blue-500'
@@ -238,3 +246,5 @@ export default function ImageCard({
     </div>
   );
 }
+
+export default memo(ImageCard);

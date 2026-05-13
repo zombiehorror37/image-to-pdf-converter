@@ -1,8 +1,10 @@
 'use client';
 import { useState, useEffect } from 'react';
+import dynamic from 'next/dynamic';
 import Header from './components/Header';
-import ConvertMode from './components/ConvertMode';
-import PdfToolsMode from './components/PdfToolsMode';
+
+const ConvertMode = dynamic(() => import('./components/ConvertMode'), { ssr: false });
+const PdfToolsMode = dynamic(() => import('./components/PdfToolsMode'), { ssr: false });
 
 export default function App() {
   const [theme, setTheme] = useState('dark');
@@ -40,7 +42,7 @@ export default function App() {
         }`} />
       </div>
 
-      <div className="relative z-10 px-4 py-6 sm:px-6 lg:px-8">
+      <main className="relative z-10 px-4 py-6 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto">
           <Header
             isDark={isDark}
@@ -49,12 +51,21 @@ export default function App() {
             onModeChange={setMode}
           />
 
-          {/* Both modes are always mounted so state survives tab switches.
-              The inactive mode is hidden with display:none. */}
-          <div className={mode !== 'convert' ? 'hidden' : ''}>
+          {/* Both modes stay mounted after first render so state survives tab switches. */}
+          <div
+            role="tabpanel"
+            id="panel-convert"
+            aria-labelledby="tab-convert"
+            className={mode !== 'convert' ? 'hidden' : ''}
+          >
             <ConvertMode isDark={isDark} isActive={mode === 'convert'} onSwitchMode={setMode} />
           </div>
-          <div className={mode !== 'pdfTools' ? 'hidden' : ''}>
+          <div
+            role="tabpanel"
+            id="panel-pdfTools"
+            aria-labelledby="tab-pdfTools"
+            className={mode !== 'pdfTools' ? 'hidden' : ''}
+          >
             <PdfToolsMode isDark={isDark} isActive={mode === 'pdfTools'} onSwitchMode={setMode} />
           </div>
 
@@ -62,7 +73,7 @@ export default function App() {
             <p>Your files are processed locally and never uploaded to any server</p>
           </footer>
         </div>
-      </div>
+      </main>
     </div>
   );
 }

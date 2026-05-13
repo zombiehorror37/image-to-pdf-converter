@@ -19,10 +19,12 @@ export default function Toasts({ isDark, toasts, onDismiss }) {
     <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-md">
       {toasts.map((toast) => {
         const Icon = ICONS[toast.type] || Info;
+        const isError = toast.type === 'error';
         return (
           <div
             key={toast.id}
-            role="status"
+            role={isError ? 'alert' : 'status'}
+            aria-live={isError ? 'assertive' : 'polite'}
             className={`rounded-xl p-3 sm:p-4 border shadow-lg backdrop-blur-md flex items-start gap-3 ${
               isDark
                 ? 'bg-gray-800/95 border-gray-700 text-white'
@@ -54,7 +56,7 @@ export default function Toasts({ isDark, toasts, onDismiss }) {
               className={`p-1 rounded-md transition-all flex-shrink-0 ${
                 isDark ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-100 text-gray-500'
               }`}
-              aria-label="Dismiss"
+              aria-label="Dismiss notification"
             >
               <X className="w-4 h-4" />
             </button>
