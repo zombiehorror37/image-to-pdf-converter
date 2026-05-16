@@ -1,26 +1,11 @@
 import { applyExifOrientation, orientationSwapsAxes } from './exifOrientation';
+import { loadImage, blobToDataUrl } from './imageDecode';
 
 const isHeic = (file) =>
   /\.(heic|heif)$/i.test(file.name) || /heic|heif/i.test(file.type);
 
 const isTiff = (file) =>
   /\.(tif|tiff)$/i.test(file.name) || /tiff/i.test(file.type);
-
-const fileToDataUrl = (file) =>
-  new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = (e) => resolve(e.target.result);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-
-const loadImage = (src) =>
-  new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = reject;
-    img.src = src;
-  });
 
 const readOrientation = async (file) => {
   try {
@@ -33,7 +18,7 @@ const readOrientation = async (file) => {
 };
 
 const decodeNative = async (file) => {
-  const dataUrl = await fileToDataUrl(file);
+  const dataUrl = await blobToDataUrl(file);
   const img = await loadImage(dataUrl);
   const orientation = await readOrientation(file);
 

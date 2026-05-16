@@ -1,6 +1,13 @@
 'use client';
-import { useRef, useState } from 'react';
+import { useCallback } from 'react';
 import PdfPageCard from './PdfPageCard';
+import VirtualizedGrid from './VirtualizedGrid';
+import { useDragReorder } from '../hooks/useDragReorder';
+
+// Card aspect-ratio is 4:5 plus the text label footer + gap.
+const CARD_FOOTER = 48;
+const GAP = 16;
+const pageRowHeight = (cardWidth) => (cardWidth * 5) / 4 + CARD_FOOTER + GAP;
 
 export default function PdfPageGrid({
   pages,
@@ -13,105 +20,67 @@ export default function PdfPageGrid({
   onRemove,
   onView,
   onMove,
+  onVisiblePagesChange,
 }) {
-  const longPressTimerRef = useRef(null);
-  const [draggedIndex, setDraggedIndex] = useState(null);
-  const [dragOverIndex, setDragOverIndex] = useState(null);
-  const [touchDragIndex, setTouchDragIndex] = useState(null);
-  const [touchPosition, setTouchPosition] = useState({ x: 0, y: 0 });
-  const [isTouchDragging, setIsTouchDragging] = useState(false);
+  const { state, handlers } = useDragReorder({ onReorder, isSelectionMode });
+  const { draggedIndex, dragOverIndex, touchDragIndex, touchPosition, isTouchDragging } = state;
 
-  const handleDragStart = (e, index) => {
-    if (isSelectionMode) {
-      e.preventDefault();
-      return;
-    }
-    setDraggedIndex(index);
-    e.dataTransfer.effectAllowed = 'move';
-  };
-
-  const handleDragEnd = () => {
-    setDraggedIndex(null);
-    setDragOverIndex(null);
-  };
-
-  const handleDragOverItem = (e, index) => {
-    e.preventDefault();
-    if (isSelectionMode) return;
-    setDragOverIndex(index);
-    if (draggedIndex !== null && draggedIndex !== index) {
-      onReorder(draggedIndex, index);
-      setDraggedIndex(index);
-    }
-  };
-
-  const handleTouchStart = (e, index) => {
-    if (isSelectionMode) return;
-    const touch = e.touches[0];
-    setTouchDragIndex(index);
-    setTouchPosition({ x: touch.clientX, y: touch.clientY });
-    clearTimeout(longPressTimerRef.current);
-    longPressTimerRef.current = setTimeout(() => {
-      setIsTouchDragging(true);
-      if (navigator.vibrate) navigator.vibrate(50);
-    }, 200);
-  };
-
-  const handleTouchMove = (e) => {
-    if (!isTouchDragging || touchDragIndex === null) return;
-    e.preventDefault();
-    const touch = e.touches[0];
-    setTouchPosition({ x: touch.clientX, y: touch.clientY });
-    const elementsAtPoint = document.elementsFromPoint(touch.clientX, touch.clientY);
-    const cardElement = elementsAtPoint.find((el) => el.dataset.cardIndex !== undefined);
-    if (cardElement) {
-      const targetIndex = parseInt(cardElement.dataset.cardIndex);
-      if (targetIndex !== touchDragIndex) setDragOverIndex(targetIndex);
-    }
-  };
-
-  const handleTouchEnd = () => {
-    clearTimeout(longPressTimerRef.current);
-    longPressTimerRef.current = null;
-    if (isTouchDragging && dragOverIndex !== null && dragOverIndex !== touchDragIndex) {
-      onReorder(touchDragIndex, dragOverIndex);
-    }
-    setTouchDragIndex(null);
-    setDragOverIndex(null);
-    setIsTouchDragging(false);
-  };
+  const renderCard = useCallback(
+    (page, index) => (
+      <PdfPageCard
+        key={page.id}
+        page={page}
+        index={index}
+        total={pages.length}
+        isDark={isDark}
+        isSelectionMode={isSelectionMode}
+        isSelected={selectedPages.has(page.id)}
+        draggedIndex={draggedIndex}
+        dragOverIndex={dragOverIndex}
+        isTouchDragging={isTouchDragging}
+        touchDragIndex={touchDragIndex}
+        onDragStart={handlers.onDragStart}
+        onDragEnd={handlers.onDragEnd}
+        onDragOverItem={handlers.onDragOverItem}
+        onTouchStart={handlers.onTouchStart}
+        onTouchMove={handlers.onTouchMove}
+        onTouchEnd={handlers.onTouchEnd}
+        onClick={onToggleSelection}
+        onRotate={onRotate}
+        onRemove={onRemove}
+        onView={onView}
+        onMove={onMove}
+        onReorder={onReorder}
+      />
+    ),
+    [
+      pages.length,
+      isDark,
+      isSelectionMode,
+      selectedPages,
+      draggedIndex,
+      dragOverIndex,
+      isTouchDragging,
+      touchDragIndex,
+      handlers,
+      onToggleSelection,
+      onRotate,
+      onRemove,
+      onView,
+      onMove,
+      onReorder,
+    ],
+  );
 
   return (
     <>
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4">
-        {pages.map((page, index) => (
-          <PdfPageCard
-            key={page.id}
-            page={page}
-            index={index}
-            total={pages.length}
-            isDark={isDark}
-            isSelectionMode={isSelectionMode}
-            isSelected={selectedPages.has(page.id)}
-            draggedIndex={draggedIndex}
-            dragOverIndex={dragOverIndex}
-            isTouchDragging={isTouchDragging}
-            touchDragIndex={touchDragIndex}
-            onDragStart={handleDragStart}
-            onDragEnd={handleDragEnd}
-            onDragOverItem={handleDragOverItem}
-            onTouchStart={handleTouchStart}
-            onTouchMove={handleTouchMove}
-            onTouchEnd={handleTouchEnd}
-            onClick={onToggleSelection}
-            onRotate={onRotate}
-            onRemove={onRemove}
-            onView={onView}
-            onMove={onMove}
-            onReorder={onReorder}
-          />
-        ))}
-      </div>
+      <VirtualizedGrid
+        items={pages}
+        renderItem={renderCard}
+        rowHeightFor={pageRowHeight}
+        getItemId={(p) => p.id}
+        onVisibleChange={onVisiblePagesChange}
+      />
 
       {isTouchDragging && touchDragIndex !== null && pages[touchDragIndex] && (
         <div

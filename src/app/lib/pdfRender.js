@@ -38,13 +38,16 @@ export const loadPdfDocument = async (source) => {
 };
 
 // Render a page to a canvas at the given target width (in CSS pixels).
-export const renderPageToCanvas = async (pdfDoc, pageNumber, targetWidth, rotation = 0) => {
+// Pass `devicePixelRatio: 1` for thumbnails to skip the retina-multiplier cost.
+export const renderPageToCanvas = async (pdfDoc, pageNumber, targetWidth, rotation = 0, opts = {}) => {
   const page = await pdfDoc.getPage(pageNumber);
   const baseViewport = page.getViewport({ scale: 1, rotation });
   const scale = targetWidth / baseViewport.width;
   const viewport = page.getViewport({ scale, rotation });
+
   const canvas = document.createElement('canvas');
-  const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
+  const dpr = opts.devicePixelRatio
+    ?? (typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1);
   canvas.width = Math.ceil(viewport.width * dpr);
   canvas.height = Math.ceil(viewport.height * dpr);
   canvas.style.width = `${viewport.width}px`;
@@ -59,7 +62,10 @@ export const renderPageToCanvas = async (pdfDoc, pageNumber, targetWidth, rotati
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.restore();
-  await page.render({ canvasContext: ctx, viewport, canvas, background: '#ffffff' }).promise;
+
+  const renderTask = page.render({ canvasContext: ctx, viewport, canvas, background: '#ffffff' });
+  await renderTask.promise;
+
   return { canvas, width: viewport.width, height: viewport.height };
 };
 
@@ -67,3 +73,17 @@ export const renderPageToDataUrl = async (pdfDoc, pageNumber, targetWidth, rotat
   const { canvas, width, height } = await renderPageToCanvas(pdfDoc, pageNumber, targetWidth, rotation);
   return { dataUrl: canvas.toDataURL('image/jpeg', 0.85), width, height };
 };
+
+// Render a canvas to a JPEG blob URL asynchronously. Caller owns the URL —
+// remember to URL.revokeObjectURL when discarding.
+export const canvasToBlobUrl = (canvas, quality = 0.7) =>
+  new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) return reject(new Error('canvas.toBlob returned null'));
+        resolve(URL.createObjectURL(blob));
+      },
+      'image/jpeg',
+      quality,
+    );
+  });

@@ -16,15 +16,18 @@ import SessionRestoreBanner from './SessionRestoreBanner';
 import WatermarkDialog from './WatermarkDialog';
 import PageNumbersDialog from './PageNumbersDialog';
 import MetadataDialog from './MetadataDialog';
-import { loadPdfDocument, renderPageToCanvas } from '../lib/pdfRender';
+import { loadPdfDocument, renderPageToCanvas, canvasToBlobUrl } from '../lib/pdfRender';
 import { exportEditedPdf, applyWatermark, applyPageNumbers, updateMetadata } from '../lib/pdfTools';
-import { loadSettings, saveSettings } from '../lib/storage';
-import { saveSession, loadSession, clearSession } from '../lib/storageDb';
 import { useHistory } from '../hooks/useHistory';
 import { useToasts } from '../hooks/useToasts';
+import { usePersistedSettings } from '../hooks/usePersistedSettings';
+import { useSessionPersistence } from '../hooks/useSessionPersistence';
+import { useEditorShortcuts } from '../hooks/useEditorShortcuts';
+import { useAsyncOperation } from '../hooks/useAsyncOperation';
 import { formatSize } from '../lib/utils';
 
-const THUMB_WIDTH = 240;
+const THUMB_WIDTH = 200;
+const THUMB_CONCURRENCY = 3; // parallel page renders
 const SESSION_KEY = 'pdfTools';
 const SETTINGS_KEY = 'pdfTools';
 
@@ -55,6 +58,9 @@ const downloadBlob = (blob, name) => {
 
 export default function PdfToolsMode({ isDark, isActive, onSwitchMode }) {
   const docsRef = useRef(new Map()); // docId → { name, file, pdfDoc }
+  const thumbInFlightRef = useRef(new Set());   // pageIds currently being rendered
+  const thumbBlobUrlsRef = useRef(new Map());   // pageId -> blob: URL (revocation tracking)
+  const visiblePageIdsRef = useRef(new Set());  // most-recent visible page IDs from grid
   const {
     value: pages,
     setValue: setPages,
@@ -65,32 +71,60 @@ export default function PdfToolsMode({ isDark, isActive, onSwitchMode }) {
     canRedo,
   } = useHistory([]);
 
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [processingStep, setProcessingStep] = useState('');
-  const [processingProgress, setProcessingProgress] = useState(0);
-  const abortControllerRef = useRef(null);
+  const op = useAsyncOperation();
 
   const [selectedPages, setSelectedPages] = useState(new Set());
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [activePageId, setActivePageId] = useState(null);
-  const [showSplit,          setShowSplit]          = useState(false);
-  const [showExportRange,    setShowExportRange]    = useState(false);
-  const [showPreview,     setShowPreview]     = useState(false);
-  const [previewPdfUrl,   setPreviewPdfUrl]   = useState(null);
-  const [showWatermark,   setShowWatermark]   = useState(false);
+  const [showSplit, setShowSplit] = useState(false);
+  const [showExportRange, setShowExportRange] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
+  const [previewPdfUrl, setPreviewPdfUrl] = useState(null);
+  const [showWatermark, setShowWatermark] = useState(false);
   const [showPageNumbers, setShowPageNumbers] = useState(false);
-  const [showMetadata,    setShowMetadata]    = useState(false);
+  const [showMetadata, setShowMetadata] = useState(false);
   const [metadataBlob, setMetadataBlobUrl] = useState(null);
 
   const [filename, setFilename] = useState('edited');
-  const [pdfSettings, setPdfSettings] = useState(DEFAULT_SETTINGS);
-  const [restorableSession, setRestorableSession] = useState(null);
+  const [pdfSettings, setPdfSettings] = usePersistedSettings(SETTINGS_KEY, DEFAULT_SETTINGS, migrateSettings);
 
-  const sessionSaveTimer = useRef(null);
-  const skipNextSessionSave = useRef(false);
+  // Bumped whenever something invalidates a thumb (rotate/annotate/add) so
+  // the rendering effect re-fires without scanning the whole pages array.
+  const [thumbVersion, setThumbVersion] = useState(0);
+  const bumpThumbVersion = useCallback(() => setThumbVersion((v) => v + 1), []);
+
   const previewPdfUrlRef = useRef(null);
 
   const { toasts, push: pushToast, dismiss: dismissToast } = useToasts();
+
+  const { restorable, skipNextSave, discard, consumeRestorable } = useSessionPersistence({
+    key: SESSION_KEY,
+    deps: [pages, filename],
+    payloadFn: () => {
+      // Thumbs are intentionally not persisted — they're cheap to regenerate
+      // and were the bulk of the IDB payload for large PDFs.
+      const lightPages = pages.map((p) => ({
+        id: p.id,
+        srcDocId: p.srcDocId,
+        srcPageIndex: p.srcPageIndex,
+        docName: p.docName,
+        internalRotation: p.internalRotation,
+        rotation: p.rotation,
+        annotations: p.annotations,
+      }));
+      const docs = Array.from(docsRef.current.entries()).map(([id, { name, file }]) => ({ id, name, file }));
+      return { pages: lightPages, docs, filename };
+    },
+    isEmpty: () => pages.length === 0,
+  });
+
+  const restorableSession =
+    restorable &&
+    Array.isArray(restorable.pages) &&
+    restorable.pages.length > 0 &&
+    Array.isArray(restorable.docs)
+      ? restorable
+      : null;
 
   // Revoke any lingering preview URL on unmount
   useEffect(() => {
@@ -110,95 +144,39 @@ export default function PdfToolsMode({ isDark, isActive, onSwitchMode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pages]);
 
-  // Load persisted settings, migrating any old pixel-width values to DPI.
-  useEffect(() => {
-    setPdfSettings(migrateSettings(loadSettings(SETTINGS_KEY, DEFAULT_SETTINGS)));
-  }, []);
-
-  useEffect(() => {
-    saveSettings(SETTINGS_KEY, pdfSettings);
-  }, [pdfSettings]);
-
-  // Load restorable session on mount
-  useEffect(() => {
-    let cancelled = false;
-    loadSession(SESSION_KEY).then((session) => {
-      if (cancelled) return;
-      if (session && Array.isArray(session.pages) && session.pages.length > 0 && Array.isArray(session.docs)) {
-        setRestorableSession(session);
-      }
-    });
-    return () => { cancelled = true; };
-  }, []);
-
-  // Auto-save session whenever pages change
-  useEffect(() => {
-    if (skipNextSessionSave.current) {
-      skipNextSessionSave.current = false;
-      return;
-    }
-    if (sessionSaveTimer.current) clearTimeout(sessionSaveTimer.current);
-    if (pages.length === 0) {
-      clearSession(SESSION_KEY);
-      return;
-    }
-    sessionSaveTimer.current = setTimeout(() => {
-      const lightPages = pages.map((p) => ({
-        id: p.id,
-        srcDocId: p.srcDocId,
-        srcPageIndex: p.srcPageIndex,
-        docName: p.docName,
-        internalRotation: p.internalRotation || 0,
-        rotation: p.rotation,
-        annotations: p.annotations,
-        thumb: p.thumb,
-      }));
-      const docs = Array.from(docsRef.current.entries()).map(([id, { name, file }]) => ({ id, name, file }));
-      saveSession(SESSION_KEY, { pages: lightPages, docs, filename });
-    }, 600);
-    return () => { if (sessionSaveTimer.current) clearTimeout(sessionSaveTimer.current); };
-  }, [pages, filename]);
-
   const restoreSession = async () => {
     if (!restorableSession) return;
-    setRestorableSession(null);
-    skipNextSessionSave.current = true;
-    setIsProcessing(true);
-    setProcessingStep('Restoring session...');
-    setProcessingProgress(0);
+    consumeRestorable();
+    skipNextSave();
 
     const { pages: savedPages, docs: savedDocs, filename: savedFilename } = restorableSession;
-    const failures = [];
 
-    for (let i = 0; i < savedDocs.length; i++) {
-      const doc = savedDocs[i];
-      setProcessingStep(`Loading ${doc.name}...`);
-      try {
-        const pdfDoc = await loadPdfDocument(doc.file);
-        docsRef.current.set(doc.id, { name: doc.name, file: doc.file, pdfDoc });
-      } catch {
-        failures.push(doc.name);
+    await op.run(async ({ setStep, setProgress }) => {
+      setStep('Restoring session...');
+      const failures = [];
+      for (let i = 0; i < savedDocs.length; i++) {
+        const doc = savedDocs[i];
+        setStep(`Loading ${doc.name}...`);
+        try {
+          const pdfDoc = await loadPdfDocument(doc.file);
+          docsRef.current.set(doc.id, { name: doc.name, file: doc.file, pdfDoc });
+        } catch {
+          failures.push(doc.name);
+        }
+        setProgress(Math.round(((i + 1) / savedDocs.length) * 80));
       }
-      setProcessingProgress(Math.round(((i + 1) / savedDocs.length) * 80));
-    }
 
-    const validPages = savedPages.filter((p) => docsRef.current.has(p.srcDocId));
-    setPages(validPages);
-    if (savedFilename) setFilename(savedFilename);
-    setIsProcessing(false);
-    setProcessingStep('');
-    setProcessingProgress(0);
+      const validPages = savedPages.filter((p) => docsRef.current.has(p.srcDocId));
+      setPages(validPages);
+      bumpThumbVersion();
+      if (savedFilename) setFilename(savedFilename);
 
-    if (failures.length > 0) {
-      pushToast({ type: 'error', title: 'Some files unavailable', message: failures.join(', ') });
-    } else {
-      pushToast({ type: 'success', message: `Restored ${validPages.length} pages.` });
-    }
-  };
-
-  const discardSession = () => {
-    clearSession(SESSION_KEY);
-    setRestorableSession(null);
+      if (failures.length > 0) {
+        pushToast({ type: 'error', title: 'Some files unavailable', message: failures.join(', ') });
+      } else {
+        pushToast({ type: 'success', message: `Restored ${validPages.length} pages.` });
+      }
+    });
   };
 
   const handleFileUpload = useCallback(
@@ -227,121 +205,183 @@ export default function PdfToolsMode({ isDark, isActive, onSwitchMode }) {
         });
       }
 
-      setIsProcessing(true);
-      setProcessingStep('Loading PDFs...');
-      setProcessingProgress(0);
+      await op.run(async ({ setStep, setProgress }) => {
+        setStep('Loading PDFs...');
+        const newPages = [];
+        const failures = [];
 
-      const newPages = [];
-      const failures = [];
-
-      for (let f = 0; f < pdfFiles.length; f++) {
-        const file = pdfFiles[f];
-        setProcessingStep(`Loading ${file.name}...`);
-        try {
-          const pdfDoc = await loadPdfDocument(file);
-          const docId = `${Date.now()}-${f}-${Math.random().toString(36).slice(2, 8)}`;
-          docsRef.current.set(docId, { name: file.name, file, pdfDoc });
-          for (let p = 0; p < pdfDoc.numPages; p++) {
-            const pdfPage = await pdfDoc.getPage(p + 1);
-            newPages.push({
-              id: `${docId}-${p}`,
-              srcDocId: docId,
-              srcPageIndex: p,
-              docName: file.name,
-              internalRotation: pdfPage.rotate || 0,
-              rotation: 0,
-              annotations: { highlights: [], inks: [], texts: [], shapes: [], stamps: [] },
-              thumb: null,
-            });
+        for (let f = 0; f < pdfFiles.length; f++) {
+          const file = pdfFiles[f];
+          setStep(`Loading ${file.name}...`);
+          try {
+            const pdfDoc = await loadPdfDocument(file);
+            const docId = `${Date.now()}-${f}-${Math.random().toString(36).slice(2, 8)}`;
+            docsRef.current.set(docId, { name: file.name, file, pdfDoc });
+            for (let p = 0; p < pdfDoc.numPages; p++) {
+              newPages.push({
+                id: `${docId}-${p}`,
+                srcDocId: docId,
+                srcPageIndex: p,
+                docName: file.name,
+                internalRotation: null,
+                rotation: 0,
+                annotations: { highlights: [], inks: [], texts: [], shapes: [], stamps: [] },
+                thumb: null,
+              });
+            }
+          } catch (err) {
+            failures.push({ name: file.name, reason: err?.message || 'Failed to open' });
           }
-        } catch (err) {
-          failures.push({ name: file.name, reason: err?.message || 'Failed to open' });
+          setProgress(Math.round(((f + 1) / pdfFiles.length) * 100));
         }
-        setProcessingProgress(Math.round(((f + 1) / pdfFiles.length) * 100));
-      }
 
-      setPages((prev) => [...prev, ...newPages]);
-      setIsProcessing(false);
-      setProcessingStep('');
-      setProcessingProgress(0);
+        setPages((prev) => [...prev, ...newPages]);
+        bumpThumbVersion();
 
-      if (newPages.length > 0) {
-        pushToast({
-          type: 'success',
-          message: `Loaded ${newPages.length} ${newPages.length === 1 ? 'page' : 'pages'} from ${
-            pdfFiles.length - failures.length
-          } ${pdfFiles.length - failures.length === 1 ? 'PDF' : 'PDFs'}.`,
-        });
-      }
-      if (failures.length > 0) {
-        pushToast({
-          type: 'error',
-          title: `${failures.length} ${failures.length === 1 ? 'PDF' : 'PDFs'} couldn't be opened`,
-          message: failures.map((f) => `${f.name}: ${f.reason}`).join('\n'),
-          duration: 8000,
-        });
-      }
+        if (newPages.length > 0) {
+          pushToast({
+            type: 'success',
+            message: `Loaded ${newPages.length} ${newPages.length === 1 ? 'page' : 'pages'} from ${
+              pdfFiles.length - failures.length
+            } ${pdfFiles.length - failures.length === 1 ? 'PDF' : 'PDFs'}.`,
+          });
+        }
+        if (failures.length > 0) {
+          pushToast({
+            type: 'error',
+            title: `${failures.length} ${failures.length === 1 ? 'PDF' : 'PDFs'} couldn't be opened`,
+            message: failures.map((f) => `${f.name}: ${f.reason}`).join('\n'),
+            duration: 8000,
+          });
+        }
+      });
     },
-    [setPages, pushToast],
+    [op, pushToast, setPages, bumpThumbVersion],
   );
 
-  // Signature changes whenever a page is added, removed, rotated, or its thumb is invalidated.
-  const thumbSignature = pages.map((p) => `${p.id}:${p.rotation}:${p.thumb ? '1' : '0'}`).join(',');
+  // Revoke and forget the blob URL for a page's thumb. Called when the thumb
+  // is invalidated (rotation/annotation) or the page is removed.
+  const revokeThumbUrl = useCallback((pageId) => {
+    const url = thumbBlobUrlsRef.current.get(pageId);
+    if (url) {
+      URL.revokeObjectURL(url);
+      thumbBlobUrlsRef.current.delete(pageId);
+    }
+  }, []);
 
-  // Background thumbnail rendering — re-runs whenever any page needs a new thumb.
+  const handleVisiblePagesChange = useCallback((ids) => {
+    visiblePageIdsRef.current = ids;
+  }, []);
+
+  // Thumb-render effect: re-fires when something flagged thumbs as invalid
+  // (bumpThumbVersion) or the pages array changed. Limited concurrency;
+  // visible pages first so the viewport fills before off-screen pages.
   useEffect(() => {
     let cancelled = false;
-    const pending = pages.filter((p) => !p.thumb);
-    if (pending.length === 0) return;
+    const inFlight = thumbInFlightRef.current;
+    const visible = visiblePageIdsRef.current;
+    const remaining = pages.filter((p) => !p.thumb && !inFlight.has(p.id));
+    if (remaining.length === 0) return;
 
-    (async () => {
-      for (const page of pending) {
-        if (cancelled) return;
+    const visiblePending = visible.size > 0
+      ? remaining.filter((p) => visible.has(p.id))
+      : [];
+    const offscreenPending = visible.size > 0
+      ? remaining.filter((p) => !visible.has(p.id))
+      : remaining;
+    const pending = [...visiblePending, ...offscreenPending];
+
+    let index = 0;
+    const worker = async () => {
+      while (!cancelled) {
+        const page = pending[index++];
+        if (!page) return;
+        if (inFlight.has(page.id)) continue;
         const doc = docsRef.current.get(page.srcDocId);
         if (!doc) continue;
+        const startedRotation = page.rotation || 0;
+        inFlight.add(page.id);
         try {
-          const totalRotation = ((page.internalRotation || 0) + (page.rotation || 0)) % 360;
-          const { canvas } = await renderPageToCanvas(doc.pdfDoc, page.srcPageIndex + 1, THUMB_WIDTH, totalRotation);
-          if (cancelled) return;
-          const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
-          setPagesQuiet((prev) => prev.map((p) => (p.id === page.id ? { ...p, thumb: dataUrl } : p)));
+          let internalRotation = page.internalRotation;
+          if (internalRotation == null) {
+            try {
+              const pdfPage = await doc.pdfDoc.getPage(page.srcPageIndex + 1);
+              internalRotation = pdfPage.rotate || 0;
+            } catch {
+              internalRotation = 0;
+            }
+          }
+          const resolvedInternal = internalRotation;
+          const totalRotation = ((internalRotation || 0) + startedRotation) % 360;
+          const { canvas } = await renderPageToCanvas(
+            doc.pdfDoc,
+            page.srcPageIndex + 1,
+            THUMB_WIDTH,
+            totalRotation,
+            { devicePixelRatio: 1 },
+          );
+          const blobUrl = await canvasToBlobUrl(canvas, 0.7);
+
+          const prevUrl = thumbBlobUrlsRef.current.get(page.id);
+          thumbBlobUrlsRef.current.set(page.id, blobUrl);
+
+          // Apply the result even if the effect was cancelled by a re-run —
+          // the next effect snapshot will see the updated thumb and skip
+          // this page. Discarding here would orphan the render.
+          let applied = false;
+          setPagesQuiet((prev) => {
+            const updated = prev.map((p) => {
+              if (p.id !== page.id) return p;
+              if ((p.rotation || 0) !== startedRotation) return p;
+              if (p.thumb) return p;
+              applied = true;
+              return {
+                ...p,
+                thumb: blobUrl,
+                ...(p.internalRotation == null ? { internalRotation: resolvedInternal } : {}),
+              };
+            });
+            return updated;
+          });
+
+          if (applied && prevUrl && prevUrl !== blobUrl) {
+            URL.revokeObjectURL(prevUrl);
+          }
         } catch {
-          // skip
+          // ignore — pending was a snapshot; next bump will retry
+        } finally {
+          inFlight.delete(page.id);
         }
       }
-    })();
-
-    return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [thumbSignature]);
-
-  // Keyboard shortcuts (only when active)
-  useEffect(() => {
-    const onKey = (e) => {
-      if (!isActive) return;
-      const target = e.target;
-      const isEditable = target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.isContentEditable;
-      if (isEditable) return;
-      const meta = e.ctrlKey || e.metaKey;
-      if (!meta) return;
-      const key = e.key.toLowerCase();
-      if (key === 'z' && !e.shiftKey) { e.preventDefault(); undo(); }
-      else if ((key === 'z' && e.shiftKey) || key === 'y') { e.preventDefault(); redo(); }
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [undo, redo, isActive]);
+    Promise.all(Array.from({ length: THUMB_CONCURRENCY }, worker));
+
+    return () => {
+      cancelled = true;
+    };
+    // pages is in deps because we want to react to page list changes; the
+    // counter handles rotate/annotate invalidations without changing pages
+    // ref equality.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pages, thumbVersion]);
+
+  useEditorShortcuts(undo, redo, isActive);
 
   const updatePage = (id, patch) => {
     const invalidatesThumb = 'annotations' in patch || 'rotation' in patch;
+    if (invalidatesThumb) revokeThumbUrl(id);
     setPages((prev) => prev.map((p) => (p.id === id ? { ...p, ...patch, ...(invalidatesThumb ? { thumb: null } : {}) } : p)));
+    if (invalidatesThumb) bumpThumbVersion();
   };
 
   const rotatePage = (id) => {
+    revokeThumbUrl(id);
     setPages((prev) => prev.map((p) => (p.id === id ? { ...p, rotation: (p.rotation + 90) % 360, thumb: null } : p)));
+    bumpThumbVersion();
   };
 
   const removePage = (id) => {
+    revokeThumbUrl(id);
     setPages((prev) => prev.filter((p) => p.id !== id));
     setSelectedPages((prev) => { const n = new Set(prev); n.delete(id); return n; });
     if (activePageId === id) setActivePageId(null);
@@ -376,16 +416,21 @@ export default function PdfToolsMode({ isDark, isActive, onSwitchMode }) {
   };
 
   const rotateSelected = () => {
+    selectedPages.forEach((id) => revokeThumbUrl(id));
     setPages((prev) => prev.map((p) =>
       selectedPages.has(p.id) ? { ...p, rotation: (p.rotation + 90) % 360, thumb: null } : p,
     ));
+    bumpThumbVersion();
   };
 
   const rotateAll = () => {
+    pages.forEach((p) => revokeThumbUrl(p.id));
     setPages((prev) => prev.map((p) => ({ ...p, rotation: (p.rotation + 90) % 360, thumb: null })));
+    bumpThumbVersion();
   };
 
   const deleteSelected = () => {
+    selectedPages.forEach((id) => revokeThumbUrl(id));
     setPages((prev) => prev.filter((p) => !selectedPages.has(p.id)));
     setSelectedPages(new Set());
     setIsSelectionMode(false);
@@ -401,37 +446,37 @@ export default function PdfToolsMode({ isDark, isActive, onSwitchMode }) {
     if (!isSelectionMode) setIsSelectionMode(true);
   };
 
+  // The export map only depends on which docIds are actually in use.
+  // Sort+join produces a stable cache key so rotating/annotating doesn't
+  // rebuild the map.
+  const docIdsKey = useMemo(() => {
+    const ids = new Set();
+    for (const p of pages) ids.add(p.srcDocId);
+    return [...ids].sort().join(',');
+  }, [pages]);
+
   const sourceDocsForExport = useMemo(() => {
     const out = {};
     for (const [id, info] of docsRef.current.entries()) out[id] = info.file;
     return out;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pages]);
-
-  const cancelOperation = () => { abortControllerRef.current?.abort(); };
+  }, [docIdsKey]);
 
   const exportPdf = async () => {
     if (pages.length === 0) return;
-    abortControllerRef.current = new AbortController();
-    setIsProcessing(true);
-    setProcessingStep('Building PDF...');
-    setProcessingProgress(0);
-    try {
-      const blob = await exportEditedPdf(sourceDocsForExport, pages);
-      if (abortControllerRef.current?.signal.aborted) return;
-      setProcessingProgress(100);
-      downloadBlob(blob, `${filename}.pdf`);
-      pushToast({ type: 'success', message: `${filename}.pdf downloaded.` });
-    } catch (err) {
-      if (!abortControllerRef.current?.signal.aborted) {
-        pushToast({ type: 'error', title: 'Export failed', message: err?.message || 'Could not produce PDF.' });
+    await op.run(async ({ signal, setProgress }) => {
+      setProgress(0);
+      try {
+        const blob = await exportEditedPdf(sourceDocsForExport, pages);
+        if (signal.aborted) return;
+        setProgress(100);
+        downloadBlob(blob, `${filename}.pdf`);
+        pushToast({ type: 'success', message: `${filename}.pdf downloaded.` });
+      } catch (err) {
+        if (!signal.aborted) {
+          pushToast({ type: 'error', title: 'Export failed', message: err?.message || 'Could not produce PDF.' });
+        }
       }
-    } finally {
-      abortControllerRef.current = null;
-      setIsProcessing(false);
-      setProcessingStep('');
-      setProcessingProgress(0);
-    }
+    }, { initialStep: 'Building PDF...' });
   };
 
   const exportRange = async (ranges) => {
@@ -439,50 +484,38 @@ export default function PdfToolsMode({ isDark, isActive, onSwitchMode }) {
     if (!ranges || ranges.length === 0) return;
     const subset = ranges.flatMap(([s, e]) => pages.slice(s - 1, e));
     if (subset.length === 0) return;
-    abortControllerRef.current = new AbortController();
-    setIsProcessing(true);
-    setProcessingStep('Building PDF...');
-    setProcessingProgress(0);
-    try {
-      const blob = await exportEditedPdf(sourceDocsForExport, subset);
-      if (abortControllerRef.current?.signal.aborted) return;
-      setProcessingProgress(100);
-      downloadBlob(blob, `${filename}-range.pdf`);
-      pushToast({ type: 'success', message: `${subset.length} pages exported as ${filename}-range.pdf.` });
-    } catch (err) {
-      if (!abortControllerRef.current?.signal.aborted) {
-        pushToast({ type: 'error', title: 'Export failed', message: err?.message || 'Could not produce PDF.' });
+    await op.run(async ({ signal, setProgress }) => {
+      try {
+        const blob = await exportEditedPdf(sourceDocsForExport, subset);
+        if (signal.aborted) return;
+        setProgress(100);
+        downloadBlob(blob, `${filename}-range.pdf`);
+        pushToast({ type: 'success', message: `${subset.length} pages exported as ${filename}-range.pdf.` });
+      } catch (err) {
+        if (!signal.aborted) {
+          pushToast({ type: 'error', title: 'Export failed', message: err?.message || 'Could not produce PDF.' });
+        }
       }
-    } finally {
-      abortControllerRef.current = null;
-      setIsProcessing(false);
-      setProcessingStep('');
-      setProcessingProgress(0);
-    }
+    }, { initialStep: 'Building PDF...' });
   };
 
   const openPreview = async () => {
     if (pages.length === 0) return;
-    abortControllerRef.current = new AbortController();
-    setIsProcessing(true);
-    setProcessingStep('Building preview...');
-    setProcessingProgress(0);
-    try {
-      const blob = await exportEditedPdf(sourceDocsForExport, pages);
-      if (abortControllerRef.current?.signal.aborted) return;
-      setProcessingProgress(100);
-      const url = URL.createObjectURL(blob);
-      previewPdfUrlRef.current = url;
-      setPreviewPdfUrl(url);
-      setShowPreview(true);
-    } catch (err) {
-      pushToast({ type: 'error', title: 'Preview failed', message: err?.message || 'Could not render preview.' });
-    } finally {
-      abortControllerRef.current = null;
-      setIsProcessing(false);
-      setProcessingStep('');
-      setProcessingProgress(0);
-    }
+    const url = await op.run(async ({ signal, setProgress }) => {
+      try {
+        const blob = await exportEditedPdf(sourceDocsForExport, pages);
+        if (signal.aborted) return undefined;
+        setProgress(100);
+        return URL.createObjectURL(blob);
+      } catch (err) {
+        pushToast({ type: 'error', title: 'Preview failed', message: err?.message || 'Could not render preview.' });
+        return undefined;
+      }
+    }, { initialStep: 'Building preview...' });
+    if (!url) return;
+    previewPdfUrlRef.current = url;
+    setPreviewPdfUrl(url);
+    setShowPreview(true);
   };
 
   const closePreview = () => {
@@ -503,201 +536,160 @@ export default function PdfToolsMode({ isDark, isActive, onSwitchMode }) {
 
   const extractSelected = async () => {
     if (selectedPages.size === 0) return;
-    abortControllerRef.current = new AbortController();
-    setIsProcessing(true);
-    setProcessingStep('Extracting pages...');
-    setProcessingProgress(0);
-    try {
-      const subset = pages.filter((p) => selectedPages.has(p.id));
-      const blob = await exportEditedPdf(sourceDocsForExport, subset);
-      if (abortControllerRef.current?.signal.aborted) return;
-      setProcessingProgress(100);
-      downloadBlob(blob, `${filename}-extracted.pdf`);
-      pushToast({ type: 'success', message: `Extracted ${subset.length} ${subset.length === 1 ? 'page' : 'pages'}.` });
-    } catch (err) {
-      pushToast({ type: 'error', title: 'Extract failed', message: err?.message || 'Could not extract pages.' });
-    } finally {
-      abortControllerRef.current = null;
-      setIsProcessing(false);
-      setProcessingStep('');
-      setProcessingProgress(0);
-    }
+    await op.run(async ({ signal, setProgress }) => {
+      try {
+        const subset = pages.filter((p) => selectedPages.has(p.id));
+        const blob = await exportEditedPdf(sourceDocsForExport, subset);
+        if (signal.aborted) return;
+        setProgress(100);
+        downloadBlob(blob, `${filename}-extracted.pdf`);
+        pushToast({ type: 'success', message: `Extracted ${subset.length} ${subset.length === 1 ? 'page' : 'pages'}.` });
+      } catch (err) {
+        pushToast({ type: 'error', title: 'Extract failed', message: err?.message || 'Could not extract pages.' });
+      }
+    }, { initialStep: 'Extracting pages...' });
   };
 
   const exportImages = async () => {
     if (pages.length === 0) return;
-    abortControllerRef.current = new AbortController();
-    setIsProcessing(true);
-    setProcessingStep('Rendering pages...');
-    setProcessingProgress(0);
-    try {
-      const zip = new JSZip();
-      for (let i = 0; i < pages.length; i++) {
-        if (abortControllerRef.current?.signal.aborted) return;
-        setProcessingStep(`Rendering page ${i + 1} of ${pages.length}...`);
-        setProcessingProgress(Math.round((i / pages.length) * 100));
-        const page = pages[i];
-        const doc = docsRef.current.get(page.srcDocId);
-        if (!doc) continue;
-        // Convert true DPI to pixel width: PDF points are 1/72 inch, so page width in inches × DPI.
-        const pdfPage = await doc.pdfDoc.getPage(page.srcPageIndex + 1);
-        const baseVp = pdfPage.getViewport({ scale: 1, rotation: page.rotation || 0 });
-        const targetWidth = Math.min(Math.round((baseVp.width / 72) * pdfSettings.imageDpi), 8000);
-        const { canvas } = await renderPageToCanvas(
-          doc.pdfDoc,
-          page.srcPageIndex + 1,
-          targetWidth,
-          page.rotation || 0,
-        );
-        const blob = await new Promise((res) => canvas.toBlob(res, 'image/jpeg', pdfSettings.imageQuality));
-        if (blob) zip.file(`page-${String(i + 1).padStart(3, '0')}.jpg`, blob);
+    await op.run(async ({ signal, setStep, setProgress }) => {
+      try {
+        const zip = new JSZip();
+        for (let i = 0; i < pages.length; i++) {
+          if (signal.aborted) return;
+          setStep(`Rendering page ${i + 1} of ${pages.length}...`);
+          setProgress(Math.round((i / pages.length) * 100));
+          const page = pages[i];
+          const doc = docsRef.current.get(page.srcDocId);
+          if (!doc) continue;
+          const pdfPage = await doc.pdfDoc.getPage(page.srcPageIndex + 1);
+          const baseVp = pdfPage.getViewport({ scale: 1, rotation: page.rotation || 0 });
+          const targetWidth = Math.min(Math.round((baseVp.width / 72) * pdfSettings.imageDpi), 8000);
+          const { canvas } = await renderPageToCanvas(
+            doc.pdfDoc,
+            page.srcPageIndex + 1,
+            targetWidth,
+            page.rotation || 0,
+          );
+          const blob = await new Promise((res) => canvas.toBlob(res, 'image/jpeg', pdfSettings.imageQuality));
+          if (blob) zip.file(`page-${String(i + 1).padStart(3, '0')}.jpg`, blob);
+        }
+        if (signal.aborted) return;
+        setStep('Compressing...');
+        setProgress(95);
+        const zipBlob = await zip.generateAsync({ type: 'blob' });
+        downloadBlob(zipBlob, `${filename}.zip`);
+        pushToast({
+          type: 'success',
+          message: `${pages.length} pages exported as ${filename}.zip — ${formatSize(zipBlob.size)} at ${pdfSettings.imageDpi} DPI.`,
+        });
+      } catch (err) {
+        if (!signal.aborted) {
+          pushToast({ type: 'error', title: 'Image export failed', message: err?.message || 'Could not render pages.' });
+        }
       }
-      if (abortControllerRef.current?.signal.aborted) return;
-      setProcessingStep('Compressing...');
-      setProcessingProgress(95);
-      const zipBlob = await zip.generateAsync({ type: 'blob' });
-      downloadBlob(zipBlob, `${filename}.zip`);
-      pushToast({ type: 'success', message: `${pages.length} pages exported as ${filename}.zip — ${formatSize(zipBlob.size)} at ${pdfSettings.imageDpi} DPI.` });
-    } catch (err) {
-      if (!abortControllerRef.current?.signal.aborted) {
-        pushToast({ type: 'error', title: 'Image export failed', message: err?.message || 'Could not render pages.' });
-      }
-    } finally {
-      abortControllerRef.current = null;
-      setIsProcessing(false);
-      setProcessingStep('');
-      setProcessingProgress(0);
-    }
+    }, { initialStep: 'Rendering pages...' });
   };
 
   const performSplit = async (ranges) => {
     setShowSplit(false);
     if (!ranges || ranges.length === 0) return;
-    abortControllerRef.current = new AbortController();
-    setIsProcessing(true);
-    setProcessingStep('Splitting PDF...');
-    setProcessingProgress(0);
-    try {
-      for (let r = 0; r < ranges.length; r++) {
-        if (abortControllerRef.current?.signal.aborted) return;
-        const [start, end] = ranges[r];
-        setProcessingStep(`Building part ${r + 1} of ${ranges.length}...`);
-        const subset = pages.slice(start - 1, end);
-        const blob = await exportEditedPdf(sourceDocsForExport, subset);
-        downloadBlob(blob, `${filename}-part${r + 1}-p${start}-${end}.pdf`);
-        setProcessingProgress(Math.round(((r + 1) / ranges.length) * 100));
+    await op.run(async ({ signal, setStep, setProgress }) => {
+      try {
+        for (let r = 0; r < ranges.length; r++) {
+          if (signal.aborted) return;
+          const [start, end] = ranges[r];
+          setStep(`Building part ${r + 1} of ${ranges.length}...`);
+          const subset = pages.slice(start - 1, end);
+          const blob = await exportEditedPdf(sourceDocsForExport, subset);
+          downloadBlob(blob, `${filename}-part${r + 1}-p${start}-${end}.pdf`);
+          setProgress(Math.round(((r + 1) / ranges.length) * 100));
+        }
+        pushToast({ type: 'success', message: `Created ${ranges.length} ${ranges.length === 1 ? 'PDF' : 'PDFs'}.` });
+      } catch (err) {
+        if (!signal.aborted) {
+          pushToast({ type: 'error', title: 'Split failed', message: err?.message || 'Could not split PDF.' });
+        }
       }
-      pushToast({ type: 'success', message: `Created ${ranges.length} ${ranges.length === 1 ? 'PDF' : 'PDFs'}.` });
-    } catch (err) {
-      if (!abortControllerRef.current?.signal.aborted) {
-        pushToast({ type: 'error', title: 'Split failed', message: err?.message || 'Could not split PDF.' });
-      }
-    } finally {
-      abortControllerRef.current = null;
-      setIsProcessing(false);
-      setProcessingStep('');
-      setProcessingProgress(0);
-    }
+    }, { initialStep: 'Splitting PDF...' });
   };
 
   // ── Layer 2: Watermark ──────────────────────────────────────────────────
   const applyWatermarkOp = async (config) => {
     setShowWatermark(false);
-    abortControllerRef.current = new AbortController();
-    setIsProcessing(true);
-    setProcessingStep('Applying watermark…');
-    setProcessingProgress(0);
-    try {
-      const base = await exportEditedPdf(sourceDocsForExport, pages);
-      if (abortControllerRef.current?.signal.aborted) return;
-      setProcessingProgress(60);
-      const blob = await applyWatermark(base, config);
-      if (abortControllerRef.current?.signal.aborted) return;
-      setProcessingProgress(100);
-      downloadBlob(blob, `${filename}-watermarked.pdf`);
-      pushToast({ type: 'success', message: 'Watermark applied and downloaded.' });
-    } catch (err) {
-      if (!abortControllerRef.current?.signal.aborted)
-        pushToast({ type: 'error', title: 'Watermark failed', message: err?.message });
-    } finally {
-      abortControllerRef.current = null;
-      setIsProcessing(false);
-      setProcessingStep('');
-      setProcessingProgress(0);
-    }
+    await op.run(async ({ signal, setProgress }) => {
+      try {
+        const base = await exportEditedPdf(sourceDocsForExport, pages);
+        if (signal.aborted) return;
+        setProgress(60);
+        const blob = await applyWatermark(base, config);
+        if (signal.aborted) return;
+        setProgress(100);
+        downloadBlob(blob, `${filename}-watermarked.pdf`);
+        pushToast({ type: 'success', message: 'Watermark applied and downloaded.' });
+      } catch (err) {
+        if (!signal.aborted) pushToast({ type: 'error', title: 'Watermark failed', message: err?.message });
+      }
+    }, { initialStep: 'Applying watermark…' });
   };
 
   // ── Layer 2: Page Numbers ────────────────────────────────────────────────
   const applyPageNumbersOp = async (config) => {
     setShowPageNumbers(false);
-    abortControllerRef.current = new AbortController();
-    setIsProcessing(true);
-    setProcessingStep('Adding page numbers…');
-    setProcessingProgress(0);
-    try {
-      const base = await exportEditedPdf(sourceDocsForExport, pages);
-      if (abortControllerRef.current?.signal.aborted) return;
-      setProcessingProgress(60);
-      const blob = await applyPageNumbers(base, config);
-      if (abortControllerRef.current?.signal.aborted) return;
-      setProcessingProgress(100);
-      downloadBlob(blob, `${filename}-numbered.pdf`);
-      pushToast({ type: 'success', message: 'Page numbers added.' });
-    } catch (err) {
-      if (!abortControllerRef.current?.signal.aborted)
-        pushToast({ type: 'error', title: 'Page numbers failed', message: err?.message });
-    } finally {
-      abortControllerRef.current = null;
-      setIsProcessing(false);
-      setProcessingStep('');
-      setProcessingProgress(0);
-    }
+    await op.run(async ({ signal, setProgress }) => {
+      try {
+        const base = await exportEditedPdf(sourceDocsForExport, pages);
+        if (signal.aborted) return;
+        setProgress(60);
+        const blob = await applyPageNumbers(base, config);
+        if (signal.aborted) return;
+        setProgress(100);
+        downloadBlob(blob, `${filename}-numbered.pdf`);
+        pushToast({ type: 'success', message: 'Page numbers added.' });
+      } catch (err) {
+        if (!signal.aborted) pushToast({ type: 'error', title: 'Page numbers failed', message: err?.message });
+      }
+    }, { initialStep: 'Adding page numbers…' });
   };
 
   // ── Layer 2: Metadata ────────────────────────────────────────────────────
   const openMetadata = async () => {
     if (pages.length === 0) return;
-    setIsProcessing(true);
-    setProcessingStep('Reading metadata…');
-    try {
-      const blob = await exportEditedPdf(sourceDocsForExport, pages);
-      setMetadataBlobUrl(blob);
-      setShowMetadata(true);
-    } catch (err) {
-      pushToast({ type: 'error', title: 'Could not read metadata', message: err?.message });
-    } finally {
-      setIsProcessing(false);
-      setProcessingStep('');
-    }
+    const blob = await op.run(async () => {
+      try {
+        return await exportEditedPdf(sourceDocsForExport, pages);
+      } catch (err) {
+        pushToast({ type: 'error', title: 'Could not read metadata', message: err?.message });
+        return undefined;
+      }
+    }, { initialStep: 'Reading metadata…' });
+    if (!blob) return;
+    setMetadataBlobUrl(blob);
+    setShowMetadata(true);
   };
 
   const applyMetadataOp = async (meta) => {
     setShowMetadata(false);
     if (!metadataBlob) return;
-    abortControllerRef.current = new AbortController();
-    setIsProcessing(true);
-    setProcessingStep('Saving metadata…');
-    setProcessingProgress(0);
-    try {
-      const blob = await updateMetadata(metadataBlob, meta);
-      setMetadataBlobUrl(null);
-      if (abortControllerRef.current?.signal.aborted) return;
-      setProcessingProgress(100);
-      downloadBlob(blob, `${filename}.pdf`);
-      pushToast({ type: 'success', message: 'Metadata saved.' });
-    } catch (err) {
-      if (!abortControllerRef.current?.signal.aborted)
-        pushToast({ type: 'error', title: 'Metadata save failed', message: err?.message });
-    } finally {
-      abortControllerRef.current = null;
-      setIsProcessing(false);
-      setProcessingStep('');
-      setProcessingProgress(0);
-    }
+    await op.run(async ({ signal, setProgress }) => {
+      try {
+        const blob = await updateMetadata(metadataBlob, meta);
+        setMetadataBlobUrl(null);
+        if (signal.aborted) return;
+        setProgress(100);
+        downloadBlob(blob, `${filename}.pdf`);
+        pushToast({ type: 'success', message: 'Metadata saved.' });
+      } catch (err) {
+        if (!signal.aborted) pushToast({ type: 'error', title: 'Metadata save failed', message: err?.message });
+      }
+    }, { initialStep: 'Saving metadata…' });
   };
 
-  const activePage = pages.find((p) => p.id === activePageId);
-  const activeIndex = pages.findIndex((p) => p.id === activePageId);
+  const { activePage, activeIndex } = useMemo(() => {
+    if (!activePageId) return { activePage: null, activeIndex: -1 };
+    const idx = pages.findIndex((p) => p.id === activePageId);
+    return { activePage: idx >= 0 ? pages[idx] : null, activeIndex: idx };
+  }, [pages, activePageId]);
   const activePdfDoc = activePage ? docsRef.current.get(activePage.srcDocId)?.pdfDoc : null;
 
   return (
@@ -709,7 +701,7 @@ export default function PdfToolsMode({ isDark, isActive, onSwitchMode }) {
           unit="page"
           updatedAt={restorableSession.updatedAt || Date.now()}
           onRestore={restoreSession}
-          onDiscard={discardSession}
+          onDiscard={discard}
         />
       )}
 
@@ -721,12 +713,12 @@ export default function PdfToolsMode({ isDark, isActive, onSwitchMode }) {
         inputId="pdfFileInput"
       />
 
-      {isProcessing && (
+      {op.isProcessing && (
         <ProcessingStatus
           isDark={isDark}
-          step={processingStep}
-          progress={processingProgress}
-          onCancel={abortControllerRef.current ? cancelOperation : null}
+          step={op.step}
+          progress={op.progress}
+          onCancel={op.hasActive() ? op.cancel : null}
         />
       )}
 
@@ -745,7 +737,7 @@ export default function PdfToolsMode({ isDark, isActive, onSwitchMode }) {
             pageCount={pages.length}
             selectedCount={selectedPages.size}
             isSelectionMode={isSelectionMode}
-            isProcessing={isProcessing}
+            isProcessing={op.isProcessing}
             onToggleSelection={() => {
               setIsSelectionMode(!isSelectionMode);
               if (isSelectionMode) setSelectedPages(new Set());
@@ -781,10 +773,11 @@ export default function PdfToolsMode({ isDark, isActive, onSwitchMode }) {
             onRemove={removePage}
             onView={(id) => setActivePageId(id)}
             onMove={movePage}
+            onVisiblePagesChange={handleVisiblePagesChange}
           />
         </div>
       ) : (
-        !isProcessing && (
+        !op.isProcessing && (
           <EmptyState isDark={isDark} mode="pdfTools" onSwitchMode={onSwitchMode} />
         )
       )}
@@ -801,6 +794,7 @@ export default function PdfToolsMode({ isDark, isActive, onSwitchMode }) {
           onNext={() => activeIndex < pages.length - 1 && setActivePageId(pages[activeIndex + 1].id)}
           onAnnotationsChange={(annotations) => updatePage(activePage.id, { annotations })}
           onStampAllPages={(stamp) => {
+            pages.forEach((p) => revokeThumbUrl(p.id));
             setPages((prev) => prev.map((p) => ({
               ...p,
               thumb: null,
@@ -810,6 +804,7 @@ export default function PdfToolsMode({ isDark, isActive, onSwitchMode }) {
                 stamps: [...(p.annotations?.stamps || []), stamp],
               },
             })));
+            bumpThumbVersion();
             pushToast({ type: 'success', message: `Stamp applied to all ${pages.length} pages.` });
           }}
           onRotate={rotatePage}

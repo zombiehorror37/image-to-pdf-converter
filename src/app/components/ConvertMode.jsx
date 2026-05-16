@@ -12,15 +12,17 @@ import Toasts from './Toasts';
 import SessionRestoreBanner from './SessionRestoreBanner';
 import { isImageFile, getImageMimeType, naturalSort } from '../lib/utils';
 import { createImageObject } from '../lib/imageProcessing';
-import { CancelledError } from '../lib/pdfGenerator';
-import { generatePDFInWorker } from '../lib/pdfGeneratorWorker';
-import { loadSettings, saveSettings } from '../lib/storage';
-import { saveSession, loadSession, clearSession } from '../lib/storageDb';
+import { CancelledError, generatePDFInWorker } from '../lib/pdfGeneratorWorker';
 import { useHistory } from '../hooks/useHistory';
 import { useToasts } from '../hooks/useToasts';
+import { usePersistedSettings } from '../hooks/usePersistedSettings';
+import { useSessionPersistence } from '../hooks/useSessionPersistence';
+import { useEditorShortcuts } from '../hooks/useEditorShortcuts';
+import { useAsyncOperation } from '../hooks/useAsyncOperation';
 
 const SESSION_KEY = 'convert';
 const SETTINGS_KEY = 'convert';
+const DECODE_CONCURRENCY = 4;
 
 const DEFAULT_SETTINGS = {
   preserveSize: true,
@@ -29,6 +31,22 @@ const DEFAULT_SETTINGS = {
   pageSize: 'A4',
   orientation: 'portrait',
   fitToPage: true,
+};
+
+// Run `fn` over `items` with at most `limit` operations in flight.
+// Preserves index order in the returned array.
+const runWithConcurrency = async (items, limit, fn) => {
+  const results = new Array(items.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (true) {
+      const i = next++;
+      if (i >= items.length) return;
+      results[i] = await fn(items[i], i);
+    }
+  });
+  await Promise.all(workers);
+  return results;
 };
 
 export default function ConvertMode({ isDark, isActive, onSwitchMode }) {
@@ -42,64 +60,25 @@ export default function ConvertMode({ isDark, isActive, onSwitchMode }) {
     canRedo,
   } = useHistory([]);
 
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [processingStep, setProcessingStep] = useState('');
-  const [processingProgress, setProcessingProgress] = useState(0);
-
   const [filename, setFilename] = useState('converted-images');
   const [selectedImages, setSelectedImages] = useState(new Set());
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [previewPdfUrl, setPreviewPdfUrl] = useState(null);
   const [estimatedSize, setEstimatedSize] = useState(0);
-  const [pdfSettings, setPdfSettings] = useState(DEFAULT_SETTINGS);
-  const [restorableSession, setRestorableSession] = useState(null);
 
-  const abortControllerRef = useRef(null);
-  const sessionSaveTimer = useRef(null);
-  const skipNextSessionSave = useRef(false);
+  const [pdfSettings, setPdfSettings] = usePersistedSettings(SETTINGS_KEY, DEFAULT_SETTINGS);
+
+  const op = useAsyncOperation();
   const previewPdfUrlRef = useRef(null);
 
   const { toasts, push: pushToast, dismiss: dismissToast } = useToasts();
 
-  // Revoke any lingering preview URL on unmount
-  useEffect(() => {
-    return () => {
-      if (previewPdfUrlRef.current) URL.revokeObjectURL(previewPdfUrlRef.current);
-    };
-  }, []);
-
-  useEffect(() => {
-    setPdfSettings(loadSettings(SETTINGS_KEY, DEFAULT_SETTINGS));
-  }, []);
-
-  useEffect(() => {
-    saveSettings(SETTINGS_KEY, pdfSettings);
-  }, [pdfSettings]);
-
-  useEffect(() => {
-    let cancelled = false;
-    loadSession(SESSION_KEY).then((session) => {
-      if (cancelled) return;
-      if (session && Array.isArray(session.images) && session.images.length > 0) {
-        setRestorableSession(session);
-      }
-    });
-    return () => { cancelled = true; };
-  }, []);
-
-  useEffect(() => {
-    if (skipNextSessionSave.current) {
-      skipNextSessionSave.current = false;
-      return;
-    }
-    if (sessionSaveTimer.current) clearTimeout(sessionSaveTimer.current);
-    if (images.length === 0) {
-      clearSession(SESSION_KEY);
-      return;
-    }
-    sessionSaveTimer.current = setTimeout(() => {
-      const lightImages = images.map((img) => ({
+  const { restorable, skipNextSave, discard, consumeRestorable } = useSessionPersistence({
+    key: SESSION_KEY,
+    deps: [images, filename],
+    payloadFn: () => ({
+      images: images.map((img) => ({
         id: img.id,
         name: img.name,
         width: img.width,
@@ -108,28 +87,36 @@ export default function ConvertMode({ isDark, isActive, onSwitchMode }) {
         size: img.size,
         preview: img.preview,
         thumb: img.thumb,
-      }));
-      saveSession(SESSION_KEY, { images: lightImages, filename });
-    }, 600);
-    return () => { if (sessionSaveTimer.current) clearTimeout(sessionSaveTimer.current); };
-  }, [images, filename]);
+      })),
+      filename,
+    }),
+    isEmpty: () => images.length === 0,
+  });
+
+  // Filter restorable to require images array
+  const restorableSession =
+    restorable && Array.isArray(restorable.images) && restorable.images.length > 0
+      ? restorable
+      : null;
+
+  // Revoke any lingering preview URL on unmount
+  useEffect(() => {
+    return () => {
+      if (previewPdfUrlRef.current) URL.revokeObjectURL(previewPdfUrlRef.current);
+    };
+  }, []);
 
   const restoreSession = () => {
     if (!restorableSession) return;
-    skipNextSessionSave.current = true;
+    skipNextSave();
     replaceImages(restorableSession.images);
     if (restorableSession.filename) setFilename(restorableSession.filename);
-    setRestorableSession(null);
+    consumeRestorable();
     pushToast({
       type: 'success',
       title: 'Session restored',
       message: `${restorableSession.images.length} ${restorableSession.images.length === 1 ? 'image' : 'images'} loaded.`,
     });
-  };
-
-  const discardSession = () => {
-    clearSession(SESSION_KEY);
-    setRestorableSession(null);
   };
 
   const handleFileUpload = useCallback(
@@ -156,71 +143,78 @@ export default function ConvertMode({ isDark, isActive, onSwitchMode }) {
         });
       }
 
-      setIsProcessing(true);
-      setProcessingStep('Processing files...');
-      setProcessingProgress(0);
+      await op.run(async ({ setStep, setProgress }) => {
+        setStep('Processing files...');
 
-      const newImages = [];
-      const failures = [];
-      const totalFiles = imageFiles.length;
-
-      for (let i = 0; i < imageFiles.length; i++) {
-        const file = imageFiles[i];
-        setProcessingProgress(Math.round((i / totalFiles) * 100));
-
-        if (file.type === 'application/zip' || file.name.endsWith('.zip')) {
-          setProcessingStep(`Extracting ${file.name}...`);
-          try {
-            const zip = new JSZip();
-            const zipContent = await zip.loadAsync(file);
-            for (let entryName in zipContent.files) {
-              const zipFile = zipContent.files[entryName];
-              if (!zipFile.dir && isImageFile(entryName)) {
-                try {
-                  const blob = await zipFile.async('blob');
-                  const imageFile = new File([blob], entryName, { type: getImageMimeType(entryName) });
-                  newImages.push(await createImageObject(imageFile));
-                } catch (err) {
-                  failures.push({ name: entryName, reason: err?.message || 'Decode failed' });
+        // 1) Flatten ZIPs into a list of plain image Files.
+        const allImageFiles = [];
+        const failures = [];
+        for (const file of imageFiles) {
+          if (file.type === 'application/zip' || file.name.endsWith('.zip')) {
+            setStep(`Extracting ${file.name}...`);
+            try {
+              const zip = new JSZip();
+              const zipContent = await zip.loadAsync(file);
+              for (const entryName in zipContent.files) {
+                const zipFile = zipContent.files[entryName];
+                if (!zipFile.dir && isImageFile(entryName)) {
+                  try {
+                    const blob = await zipFile.async('blob');
+                    allImageFiles.push(new File([blob], entryName, { type: getImageMimeType(entryName) }));
+                  } catch (err) {
+                    failures.push({ name: entryName, reason: err?.message || 'Decode failed' });
+                  }
                 }
               }
+            } catch (err) {
+              failures.push({ name: file.name, reason: err?.message || 'ZIP read failed' });
             }
-          } catch (err) {
-            failures.push({ name: file.name, reason: err?.message || 'ZIP read failed' });
+          } else if (isImageFile(file.name)) {
+            allImageFiles.push(file);
+          } else {
+            failures.push({ name: file.name, reason: 'Unsupported file type' });
           }
-        } else if (isImageFile(file.name)) {
-          try {
-            newImages.push(await createImageObject(file));
-          } catch (err) {
-            failures.push({ name: file.name, reason: err?.message || 'Decode failed' });
-          }
-        } else {
-          failures.push({ name: file.name, reason: 'Unsupported file type' });
         }
-      }
 
-      setProcessingProgress(100);
-      newImages.sort(naturalSort);
-      if (newImages.length > 0) setImages((prev) => [...prev, ...newImages]);
-      setIsProcessing(false);
-      setProcessingStep('');
-      setProcessingProgress(0);
+        // 2) Decode in parallel (bounded). Track progress as decodes complete.
+        setStep('Decoding images...');
+        let done = 0;
+        const total = allImageFiles.length;
+        const newImages = total === 0 ? [] : (
+          await runWithConcurrency(allImageFiles, DECODE_CONCURRENCY, async (file) => {
+            try {
+              const obj = await createImageObject(file);
+              done++;
+              setProgress(Math.round((done / total) * 100));
+              return obj;
+            } catch (err) {
+              failures.push({ name: file.name, reason: err?.message || 'Decode failed' });
+              done++;
+              setProgress(Math.round((done / total) * 100));
+              return null;
+            }
+          })
+        ).filter(Boolean);
 
-      if (failures.length > 0) {
-        const sample = failures.slice(0, 3).map((f) => `${f.name}: ${f.reason}`).join('\n');
-        const more = failures.length > 3 ? `\n…and ${failures.length - 3} more` : '';
-        pushToast({
-          type: 'error',
-          title: `${failures.length} ${failures.length === 1 ? 'file' : 'files'} couldn't be added`,
-          message: sample + more,
-          duration: 9000,
-        });
-      }
-      if (newImages.length > 0 && failures.length === 0) {
-        pushToast({ type: 'success', message: `Added ${newImages.length} ${newImages.length === 1 ? 'image' : 'images'}.` });
-      }
+        newImages.sort(naturalSort);
+        if (newImages.length > 0) setImages((prev) => [...prev, ...newImages]);
+
+        if (failures.length > 0) {
+          const sample = failures.slice(0, 3).map((f) => `${f.name}: ${f.reason}`).join('\n');
+          const more = failures.length > 3 ? `\n…and ${failures.length - 3} more` : '';
+          pushToast({
+            type: 'error',
+            title: `${failures.length} ${failures.length === 1 ? 'file' : 'files'} couldn't be added`,
+            message: sample + more,
+            duration: 9000,
+          });
+        }
+        if (newImages.length > 0 && failures.length === 0) {
+          pushToast({ type: 'success', message: `Added ${newImages.length} ${newImages.length === 1 ? 'image' : 'images'}.` });
+        }
+      });
     },
-    [setImages, pushToast],
+    [op, pushToast, setImages],
   );
 
   // Clipboard paste
@@ -245,22 +239,7 @@ export default function ConvertMode({ isDark, isActive, onSwitchMode }) {
     return () => document.removeEventListener('paste', handlePaste);
   }, [handleFileUpload, isActive]);
 
-  // Keyboard shortcuts (only when this mode is active)
-  useEffect(() => {
-    const onKey = (e) => {
-      if (!isActive) return;
-      const target = e.target;
-      const isEditable = target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.isContentEditable;
-      if (isEditable) return;
-      const meta = e.ctrlKey || e.metaKey;
-      if (!meta) return;
-      const key = e.key.toLowerCase();
-      if (key === 'z' && !e.shiftKey) { e.preventDefault(); undo(); }
-      else if ((key === 'z' && e.shiftKey) || key === 'y') { e.preventDefault(); redo(); }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [undo, redo, isActive]);
+  useEditorShortcuts(undo, redo, isActive);
 
   // Estimated size
   useEffect(() => {
@@ -326,52 +305,45 @@ export default function ConvertMode({ isDark, isActive, onSwitchMode }) {
     });
   };
 
-  const cancelGeneration = () => { abortControllerRef.current?.abort(); };
-
   const runGeneration = async (forPreview) => {
     if (images.length === 0) return;
-    abortControllerRef.current = new AbortController();
-    setIsProcessing(true);
-    setProcessingStep('Generating PDF...');
-    setProcessingProgress(0);
-    try {
-      const pdfBlob = await generatePDFInWorker(
-        images,
-        pdfSettings,
-        (p) => setProcessingProgress(p),
-        (s) => setProcessingStep(s),
-        abortControllerRef.current.signal,
-      );
-      if (!pdfBlob) return;
-      if (forPreview) {
-        const url = URL.createObjectURL(pdfBlob);
-        previewPdfUrlRef.current = url;
-        setPreviewPdfUrl(url);
-        setShowPreview(true);
-      } else {
-        setProcessingStep('Saving PDF...');
-        const url = URL.createObjectURL(pdfBlob);
-        const a = document.createElement('a');
-        a.href = url;
-        const safeName = filename.trim() || 'converted-images';
-        a.download = `${safeName}.pdf`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        pushToast({ type: 'success', message: `${safeName}.pdf downloaded.` });
-      }
-    } catch (err) {
-      if (err instanceof CancelledError) {
-        pushToast({ type: 'info', message: 'PDF generation cancelled.' });
-      } else {
+    const result = await op.run(async ({ signal, setStep, setProgress }) => {
+      setStep('Generating PDF...');
+      try {
+        return await generatePDFInWorker(
+          images,
+          pdfSettings,
+          (p) => setProgress(p),
+          (s) => setStep(s),
+          signal,
+        );
+      } catch (err) {
+        if (err instanceof CancelledError) {
+          pushToast({ type: 'info', message: 'PDF generation cancelled.' });
+          return undefined;
+        }
         pushToast({ type: 'error', title: 'PDF generation failed', message: err?.message || 'An unknown error occurred.' });
+        return undefined;
       }
-    } finally {
-      abortControllerRef.current = null;
-      setIsProcessing(false);
-      setProcessingStep('');
-      setProcessingProgress(0);
+    });
+
+    if (!result) return;
+    if (forPreview) {
+      const url = URL.createObjectURL(result);
+      previewPdfUrlRef.current = url;
+      setPreviewPdfUrl(url);
+      setShowPreview(true);
+    } else {
+      const url = URL.createObjectURL(result);
+      const a = document.createElement('a');
+      a.href = url;
+      const safeName = filename.trim() || 'converted-images';
+      a.download = `${safeName}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      pushToast({ type: 'success', message: `${safeName}.pdf downloaded.` });
     }
   };
 
@@ -401,7 +373,7 @@ export default function ConvertMode({ isDark, isActive, onSwitchMode }) {
           unit="image"
           updatedAt={restorableSession.updatedAt || Date.now()}
           onRestore={restoreSession}
-          onDiscard={discardSession}
+          onDiscard={discard}
         />
       )}
 
@@ -425,12 +397,12 @@ export default function ConvertMode({ isDark, isActive, onSwitchMode }) {
         />
       )}
 
-      {isProcessing && (
+      {op.isProcessing && (
         <ProcessingStatus
           isDark={isDark}
-          step={processingStep}
-          progress={processingProgress}
-          onCancel={abortControllerRef.current ? cancelGeneration : null}
+          step={op.step}
+          progress={op.progress}
+          onCancel={op.hasActive() ? op.cancel : null}
         />
       )}
 
@@ -439,7 +411,7 @@ export default function ConvertMode({ isDark, isActive, onSwitchMode }) {
           <Toolbar
             isDark={isDark}
             imageCount={images.length}
-            isProcessing={isProcessing}
+            isProcessing={op.isProcessing}
             isSelectionMode={isSelectionMode}
             selectedCount={selectedImages.size}
             allSelected={selectedImages.size === images.length}
@@ -472,7 +444,7 @@ export default function ConvertMode({ isDark, isActive, onSwitchMode }) {
         </div>
       )}
 
-      {images.length === 0 && !isProcessing && (
+      {images.length === 0 && !op.isProcessing && (
         <EmptyState isDark={isDark} mode="convert" onSwitchMode={onSwitchMode} />
       )}
 
