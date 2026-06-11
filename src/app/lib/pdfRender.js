@@ -53,17 +53,20 @@ export const renderPageToCanvas = async (pdfDoc, pageNumber, targetWidth, rotati
   canvas.style.width = `${viewport.width}px`;
   canvas.style.height = `${viewport.height}px`;
   const ctx = canvas.getContext('2d');
-  ctx.scale(dpr, dpr);
-  // Paint a white background so PDFs without their own page background don't
-  // bleed through as transparent (which becomes black in JPEG thumbnails/exports
-  // and shows the dark UI through the editor canvas).
-  ctx.save();
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.restore();
 
-  const renderTask = page.render({ canvasContext: ctx, viewport, canvas, background: '#ffffff' });
+  // The retina multiplier must go through the `transform` render parameter:
+  // pdf.js v5 resets the canvas context transform before drawing, so a manual
+  // ctx.scale(dpr, dpr) is silently discarded and the page renders at 1x into
+  // the dpr-scaled canvas (shrunken page in the top-left corner, rest blank).
+  // `background: '#ffffff'` paints the page white so PDFs without their own
+  // background don't come out transparent (black in JPEG thumbnails/exports).
+  const renderTask = page.render({
+    canvasContext: ctx,
+    viewport,
+    canvas,
+    background: '#ffffff',
+    transform: dpr !== 1 ? [dpr, 0, 0, dpr, 0, 0] : null,
+  });
   await renderTask.promise;
 
   return { canvas, width: viewport.width, height: viewport.height };

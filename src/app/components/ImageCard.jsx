@@ -79,21 +79,19 @@ function ImageCard({
           </div>
         )}
 
-        {!isSelectionMode && (
+        <div
+          className={`absolute z-10 transition-all duration-200 ${
+            isSelectionMode ? 'bottom-0 left-0' : 'top-0 left-0'
+          } ${isBeingDragged ? 'opacity-50' : isDropTarget ? 'scale-110' : ''}`}
+        >
           <div
-            className={`absolute top-0 left-0 z-10 transition-all duration-200 ${
-              isBeingDragged ? 'opacity-50' : isDropTarget ? 'scale-110' : ''
-            }`}
+            className={`px-2.5 py-1 sm:px-3 sm:py-1.5 text-[10px] sm:text-xs font-semibold tracking-wide uppercase backdrop-blur-md ${
+              isSelectionMode ? 'rounded-tr-xl rounded-bl-xl' : 'rounded-br-xl rounded-tl-xl'
+            } ${isDark ? 'bg-black/70 text-white/90' : 'bg-white/90 text-gray-700 shadow-sm'}`}
           >
-            <div
-              className={`px-2.5 py-1 sm:px-3 sm:py-1.5 text-[10px] sm:text-xs font-semibold tracking-wide uppercase rounded-br-xl rounded-tl-xl backdrop-blur-md ${
-                isDark ? 'bg-black/70 text-white/90' : 'bg-white/90 text-gray-700 shadow-sm'
-              }`}
-            >
-              <span className="opacity-60">Page</span> {index + 1}
-            </div>
+            <span className="opacity-60">Page</span> {index + 1}
           </div>
-        )}
+        </div>
 
         <img
           src={image.thumb || image.preview}

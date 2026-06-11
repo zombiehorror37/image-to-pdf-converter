@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npm ls *)"
+      "Bash(npm ls *)",
+      "Bash(git -C \"C:/Users/zombi/Desktop/Projects/image-to-pdf-converter\" diff)"
     ]
   }
 }

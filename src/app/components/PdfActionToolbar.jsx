@@ -30,6 +30,7 @@ export default function PdfActionToolbar({
   onSplit,
   onExportRange,
   onPreview,
+  onPreviewSelected,
   onWatermark,
   onPageNumbers,
   onMetadata,
@@ -230,6 +231,13 @@ export default function PdfActionToolbar({
             className={`px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-1.5 transition-all disabled:opacity-50 ${isDark ? 'bg-gray-700 hover:bg-gray-600' : 'bg-white hover:bg-gray-50 shadow-sm'}`}
           >
             <RotateCw className="w-4 h-4" /> Rotate
+          </button>
+          <button
+            onClick={onPreviewSelected}
+            disabled={selectedCount === 0 || isProcessing}
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-1.5 transition-all disabled:opacity-50 ${isDark ? 'bg-gray-700 hover:bg-gray-600' : 'bg-white hover:bg-gray-50 shadow-sm'}`}
+          >
+            <Eye className="w-4 h-4" /> Preview
           </button>
           <button
             onClick={onExtractSelected}

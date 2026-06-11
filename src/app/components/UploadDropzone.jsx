@@ -10,7 +10,12 @@ export default function UploadDropzone({ isDark, mode, onDrop, onFiles, inputId 
     e.preventDefault();
     onDrop(Array.from(e.dataTransfer.files));
   };
-  const handleChange = (e) => onFiles(Array.from(e.target.files));
+  const handleChange = (e) => {
+    const files = Array.from(e.target.files);
+    // Reset so selecting the same file again re-fires onChange.
+    e.target.value = '';
+    onFiles(files);
+  };
   const triggerInput = () => document.getElementById(inputId).click();
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' || e.key === ' ') {

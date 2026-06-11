@@ -52,14 +52,48 @@ export const exportEditedPdf = async (sourceDocs, pageOps) => {
     const src = loaded.get(op.srcDocId);
     if (!src) continue;
     const [copied] = await out.copyPages(src, [op.srcPageIndex]);
-    if (op.rotation) copied.setRotation(degrees(((op.internalRotation || 0) + op.rotation) % 360));
+    // Read the page's own /Rotate rather than trusting op.internalRotation,
+    // which is resolved lazily by the thumbnail renderer and can still be null.
+    const internal = ((copied.getRotation().angle % 360) + 360) % 360;
+    const total = (internal + (op.rotation || 0)) % 360;
+    if (op.rotation) copied.setRotation(degrees(total));
+
+    // Annotation coordinates were captured in the *rotated display frame* the
+    // user saw in the editor (origin bottom-left of the rotated view). Drawing
+    // happens in the page's unrotated user space, so map them back. W/H are
+    // the unrotated page size; the mapping mirrors pdf.js's viewport transform.
+    const { width: W, height: H } = copied.getSize();
+    const toUser = (ax, ay) => {
+      switch (total) {
+        case 90:  return { x: W - ay, y: ax };
+        case 180: return { x: W - ax, y: H - ay };
+        case 270: return { x: ay, y: H - ax };
+        default:  return { x: ax, y: ay };
+      }
+    };
+    // Axis-aligned display rect → axis-aligned user rect (rotations are
+    // multiples of 90°, so boxes stay axis-aligned — just normalize corners).
+    const toUserRect = (ax, ay, w, h) => {
+      const p1 = toUser(ax, ay);
+      const p2 = toUser(ax + w, ay + h);
+      return {
+        x: Math.min(p1.x, p2.x),
+        y: Math.min(p1.y, p2.y),
+        width: Math.abs(p2.x - p1.x),
+        height: Math.abs(p2.y - p1.y),
+      };
+    };
+    // Text drawn in user space gets rotated by /Rotate at display time;
+    // pre-rotating by the same angle (pdf-lib: positive = CCW) keeps it
+    // upright in the rotated view.
+    const textRotate = degrees(total);
 
     const ann = op.annotations || {};
 
     // ── Highlights ──
     for (const h of ann.highlights || []) {
       copied.drawRectangle({
-        x: h.x, y: h.y, width: h.w, height: h.h,
+        ...toUserRect(h.x, h.y, h.w, h.h),
         color: rgb(1, 0.92, 0.23),
         opacity: 0.4,
         borderWidth: 0,
@@ -68,7 +102,7 @@ export const exportEditedPdf = async (sourceDocs, pageOps) => {
 
     // ── Freehand inks ──
     for (const stroke of ann.inks || []) {
-      const pts = stroke.points;
+      const pts = stroke.points.map((p) => toUser(p.x, p.y));
       const c   = stroke.color || { r: 1, g: 0, b: 0 };
       const lw  = stroke.width || 2;
       for (let i = 1; i < pts.length; i++) {
@@ -88,17 +122,18 @@ export const exportEditedPdf = async (sourceDocs, pageOps) => {
       const lw = s.strokeWidth || 2;
       if (s.type === 'line') {
         copied.drawLine({
-          start: { x: s.x1, y: s.y1 },
-          end:   { x: s.x2, y: s.y2 },
+          start: toUser(s.x1, s.y1),
+          end:   toUser(s.x2, s.y2),
           thickness: lw,
           color: rgb(c.r, c.g, c.b),
         });
       } else if (s.type === 'ellipse') {
+        const r = toUserRect(s.x, s.y, s.w, s.h);
         copied.drawEllipse({
-          x: s.x + s.w / 2,
-          y: s.y + s.h / 2,
-          xScale: s.w / 2,
-          yScale: s.h / 2,
+          x: r.x + r.width / 2,
+          y: r.y + r.height / 2,
+          xScale: r.width / 2,
+          yScale: r.height / 2,
           color:       s.filled ? rgb(c.r, c.g, c.b) : undefined,
           borderColor: rgb(c.r, c.g, c.b),
           borderWidth: lw,
@@ -107,7 +142,7 @@ export const exportEditedPdf = async (sourceDocs, pageOps) => {
       } else {
         // rect
         copied.drawRectangle({
-          x: s.x, y: s.y, width: s.w, height: s.h,
+          ...toUserRect(s.x, s.y, s.w, s.h),
           color:       s.filled ? rgb(c.r, c.g, c.b) : undefined,
           borderColor: rgb(c.r, c.g, c.b),
           borderWidth: lw,
@@ -122,10 +157,11 @@ export const exportEditedPdf = async (sourceDocs, pageOps) => {
       const sz = t.fontSize || 14;
       try {
         copied.drawText(t.text, {
-          x: t.x, y: t.y,
+          ...toUser(t.x, t.y),
           size: sz,
           font,
           color: rgb(c.r, c.g, c.b),
+          rotate: textRotate,
         });
       } catch {
         // skip if text contains unsupported chars
@@ -142,20 +178,20 @@ export const exportEditedPdf = async (sourceDocs, pageOps) => {
       // Center the box around the glyphs' visual center. PDF y grows up;
       // ascent ~0.7·sz / descent ~0.2·sz puts the visual center 0.25·sz
       // above the baseline, so the box bottom sits 0.25·sz below it.
+      // Box computed in the display frame, then mapped, so it stays wrapped
+      // around the (pre-rotated) label.
       copied.drawRectangle({
-        x: st.x - pad,
-        y: st.y - sz * 0.25 - pad,
-        width:  tw + pad * 2,
-        height: sz + pad * 2,
+        ...toUserRect(st.x - pad, st.y - sz * 0.25 - pad, tw + pad * 2, sz + pad * 2),
         borderColor: rgb(c.r, c.g, c.b),
         borderWidth: 1.5,
       });
       try {
         copied.drawText(st.label, {
-          x: st.x, y: st.y,
+          ...toUser(st.x, st.y),
           size: sz,
           font: boldFont,
           color: rgb(c.r, c.g, c.b),
+          rotate: textRotate,
         });
       } catch { /* skip */ }
     }

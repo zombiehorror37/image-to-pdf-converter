@@ -81,8 +81,14 @@ export default function PdfViewer({
 
   useEffect(() => {
     if (!pdfDoc || !page) return;
+    // Hide the annotation overlay until this page's render commits — drawing
+    // it with the previous page's dimensions briefly shows annotations at the
+    // wrong scale when navigating between pages of different sizes.
+    setRenderInfo(null);
+    // Out-of-order render protection: when `page` changes, this effect's
+    // cleanup flips `active` before the next effect runs, so a slower older
+    // render can never commit over a newer one.
     let active = true;
-    const capturedPageId = page.id;
     (async () => {
       const containerWidth = containerRef.current?.clientWidth || 800;
       const targetWidth = Math.min(containerWidth - 32, 1100);
@@ -93,18 +99,17 @@ export default function PdfViewer({
       if (!active) return;
       const node = canvasRef.current;
       if (!node) return;
-      // Guard against out-of-order renders: only commit if this is still the active page.
-      if (node.dataset.pageId && node.dataset.pageId !== capturedPageId) return;
-      node.dataset.pageId = capturedPageId;
       node.replaceChildren(canvas);
-      if (!active) return;
       const pdfPage = await pdfDoc.getPage(page.srcPageIndex + 1);
       if (!active) return;
       const vp = pdfPage.getViewport({ scale: 1, rotation: totalRotation });
       setRenderInfo({ width, height, pdfWidth: vp.width, pdfHeight: vp.height });
     })();
     return () => { active = false; };
-  }, [pdfDoc, page]);
+    // Annotations live in the SVG overlay, not the canvas — keying on the
+    // scalar fields avoids a full pdf.js re-render on every annotation edit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pdfDoc, page?.id, page?.srcPageIndex, page?.internalRotation, page?.rotation]);
 
   // Focus text input when it appears
   useEffect(() => {

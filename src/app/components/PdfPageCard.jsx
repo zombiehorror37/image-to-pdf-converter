@@ -3,8 +3,8 @@ import { memo } from 'react';
 import { RotateCw, Trash2, Eye, GripVertical, ChevronUp, ChevronDown, CheckSquare, Highlighter, Loader2 } from 'lucide-react';
 import CardMenu from './CardMenu';
 
-// CSS rotation for the thumb means rotating doesn't require a re-render —
-// actual page rotation is applied during export by pdf-lib.
+// Rotating clears the thumb; the grid re-renders it at the new rotation.
+// Actual page rotation is applied during export by pdf-lib.
 function PdfPageCard({
   page,
   index,
@@ -83,17 +83,15 @@ function PdfPageCard({
           </div>
         )}
 
-        {!isSelectionMode && (
-          <div className="absolute top-0 left-0 z-10">
-            <div
-              className={`px-2.5 py-1 sm:px-3 sm:py-1.5 text-[10px] sm:text-xs font-semibold tracking-wide uppercase rounded-br-xl rounded-tl-xl backdrop-blur-md ${
-                isDark ? 'bg-black/70 text-white/90' : 'bg-white/90 text-gray-700 shadow-sm'
-              }`}
-            >
-              <span className="opacity-60">Page</span> {index + 1}
-            </div>
+        <div className={`absolute z-10 ${isSelectionMode ? 'bottom-0 left-0' : 'top-0 left-0'}`}>
+          <div
+            className={`px-2.5 py-1 sm:px-3 sm:py-1.5 text-[10px] sm:text-xs font-semibold tracking-wide uppercase backdrop-blur-md ${
+              isSelectionMode ? 'rounded-tr-xl rounded-bl-xl' : 'rounded-br-xl rounded-tl-xl'
+            } ${isDark ? 'bg-black/70 text-white/90' : 'bg-white/90 text-gray-700 shadow-sm'}`}
+          >
+            <span className="opacity-60">Page</span> {index + 1}
           </div>
-        )}
+        </div>
 
         {hasAnnotations && (
           <div className="absolute top-2 right-2 z-10 pointer-events-none">

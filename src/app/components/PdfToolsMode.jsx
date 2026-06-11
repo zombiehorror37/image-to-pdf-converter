@@ -59,7 +59,11 @@ const downloadBlob = (blob, name) => {
 export default function PdfToolsMode({ isDark, isActive, onSwitchMode }) {
   const docsRef = useRef(new Map()); // docId → { name, file, pdfDoc }
   const thumbInFlightRef = useRef(new Set());   // pageIds currently being rendered
-  const thumbBlobUrlsRef = useRef(new Map());   // pageId -> blob: URL (revocation tracking)
+  // Every thumb blob: URL ever created. Undo/redo snapshots keep references to
+  // old thumbs, so URLs must NOT be revoked eagerly on rotate/delete — doing so
+  // leaves restored pages pointing at dead blob: URLs (blank thumbnails).
+  // They're revoked in bulk on unmount instead.
+  const thumbBlobUrlsRef = useRef(new Set());
   const visiblePageIdsRef = useRef(new Set());  // most-recent visible page IDs from grid
   const {
     value: pages,
@@ -126,23 +130,46 @@ export default function PdfToolsMode({ isDark, isActive, onSwitchMode }) {
       ? restorable
       : null;
 
-  // Revoke any lingering preview URL on unmount
+  // Revoke any lingering preview URL and all thumb URLs on unmount
   useEffect(() => {
+    const thumbUrls = thumbBlobUrlsRef.current;
     return () => {
       if (previewPdfUrlRef.current) URL.revokeObjectURL(previewPdfUrlRef.current);
+      for (const url of thumbUrls) URL.revokeObjectURL(url);
+      thumbUrls.clear();
     };
   }, []);
 
+  // Signature of user-visible edits (order, rotation, annotations). Thumbs
+  // resolving in the background change the `pages` array identity but not
+  // this signature — keying the stale-preview check on it stops the preview
+  // modal from closing itself when a background thumb lands.
+  const editSig = useMemo(
+    () =>
+      pages
+        .map((p) => {
+          const a = p.annotations || {};
+          return `${p.id}:${p.rotation}:${a.highlights?.length || 0},${a.inks?.length || 0},${a.texts?.length || 0},${a.shapes?.length || 0},${a.stamps?.length || 0}`;
+        })
+        .join('|'),
+    [pages],
+  );
+
   // Close stale preview when pages are edited
+  const lastEditSigRef = useRef(editSig);
   useEffect(() => {
-    if (showPreview && pages.length > 0) {
+    if (!showPreview) {
+      lastEditSigRef.current = editSig;
+      return;
+    }
+    if (lastEditSigRef.current !== editSig) {
+      lastEditSigRef.current = editSig;
       if (previewPdfUrlRef.current) URL.revokeObjectURL(previewPdfUrlRef.current);
       previewPdfUrlRef.current = null;
       setPreviewPdfUrl(null);
       setShowPreview(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pages]);
+  }, [editSig, showPreview]);
 
   const restoreSession = async () => {
     if (!restorableSession) return;
@@ -259,16 +286,6 @@ export default function PdfToolsMode({ isDark, isActive, onSwitchMode }) {
     [op, pushToast, setPages, bumpThumbVersion],
   );
 
-  // Revoke and forget the blob URL for a page's thumb. Called when the thumb
-  // is invalidated (rotation/annotation) or the page is removed.
-  const revokeThumbUrl = useCallback((pageId) => {
-    const url = thumbBlobUrlsRef.current.get(pageId);
-    if (url) {
-      URL.revokeObjectURL(url);
-      thumbBlobUrlsRef.current.delete(pageId);
-    }
-  }, []);
-
   const handleVisiblePagesChange = useCallback((ids) => {
     visiblePageIdsRef.current = ids;
   }, []);
@@ -321,20 +338,16 @@ export default function PdfToolsMode({ isDark, isActive, onSwitchMode }) {
             { devicePixelRatio: 1 },
           );
           const blobUrl = await canvasToBlobUrl(canvas, 0.7);
-
-          const prevUrl = thumbBlobUrlsRef.current.get(page.id);
-          thumbBlobUrlsRef.current.set(page.id, blobUrl);
+          thumbBlobUrlsRef.current.add(blobUrl);
 
           // Apply the result even if the effect was cancelled by a re-run —
           // the next effect snapshot will see the updated thumb and skip
           // this page. Discarding here would orphan the render.
-          let applied = false;
           setPagesQuiet((prev) => {
             const updated = prev.map((p) => {
               if (p.id !== page.id) return p;
               if ((p.rotation || 0) !== startedRotation) return p;
               if (p.thumb) return p;
-              applied = true;
               return {
                 ...p,
                 thumb: blobUrl,
@@ -343,10 +356,6 @@ export default function PdfToolsMode({ isDark, isActive, onSwitchMode }) {
             });
             return updated;
           });
-
-          if (applied && prevUrl && prevUrl !== blobUrl) {
-            URL.revokeObjectURL(prevUrl);
-          }
         } catch {
           // ignore — pending was a snapshot; next bump will retry
         } finally {
@@ -369,19 +378,16 @@ export default function PdfToolsMode({ isDark, isActive, onSwitchMode }) {
 
   const updatePage = (id, patch) => {
     const invalidatesThumb = 'annotations' in patch || 'rotation' in patch;
-    if (invalidatesThumb) revokeThumbUrl(id);
     setPages((prev) => prev.map((p) => (p.id === id ? { ...p, ...patch, ...(invalidatesThumb ? { thumb: null } : {}) } : p)));
     if (invalidatesThumb) bumpThumbVersion();
   };
 
   const rotatePage = (id) => {
-    revokeThumbUrl(id);
     setPages((prev) => prev.map((p) => (p.id === id ? { ...p, rotation: (p.rotation + 90) % 360, thumb: null } : p)));
     bumpThumbVersion();
   };
 
   const removePage = (id) => {
-    revokeThumbUrl(id);
     setPages((prev) => prev.filter((p) => p.id !== id));
     setSelectedPages((prev) => { const n = new Set(prev); n.delete(id); return n; });
     if (activePageId === id) setActivePageId(null);
@@ -416,7 +422,6 @@ export default function PdfToolsMode({ isDark, isActive, onSwitchMode }) {
   };
 
   const rotateSelected = () => {
-    selectedPages.forEach((id) => revokeThumbUrl(id));
     setPages((prev) => prev.map((p) =>
       selectedPages.has(p.id) ? { ...p, rotation: (p.rotation + 90) % 360, thumb: null } : p,
     ));
@@ -424,13 +429,11 @@ export default function PdfToolsMode({ isDark, isActive, onSwitchMode }) {
   };
 
   const rotateAll = () => {
-    pages.forEach((p) => revokeThumbUrl(p.id));
     setPages((prev) => prev.map((p) => ({ ...p, rotation: (p.rotation + 90) % 360, thumb: null })));
     bumpThumbVersion();
   };
 
   const deleteSelected = () => {
-    selectedPages.forEach((id) => revokeThumbUrl(id));
     setPages((prev) => prev.filter((p) => !selectedPages.has(p.id)));
     setSelectedPages(new Set());
     setIsSelectionMode(false);
@@ -518,6 +521,26 @@ export default function PdfToolsMode({ isDark, isActive, onSwitchMode }) {
     setShowPreview(true);
   };
 
+  const openPreviewSelected = async () => {
+    if (selectedPages.size === 0) return;
+    const subset = pages.filter((p) => selectedPages.has(p.id));
+    const url = await op.run(async ({ signal, setProgress }) => {
+      try {
+        const blob = await exportEditedPdf(sourceDocsForExport, subset);
+        if (signal.aborted) return undefined;
+        setProgress(100);
+        return URL.createObjectURL(blob);
+      } catch (err) {
+        pushToast({ type: 'error', title: 'Preview failed', message: err?.message || 'Could not render preview.' });
+        return undefined;
+      }
+    }, { initialStep: 'Building preview...' });
+    if (!url) return;
+    previewPdfUrlRef.current = url;
+    setPreviewPdfUrl(url);
+    setShowPreview(true);
+  };
+
   const closePreview = () => {
     if (previewPdfUrl) URL.revokeObjectURL(previewPdfUrl);
     previewPdfUrlRef.current = null;
@@ -563,13 +586,20 @@ export default function PdfToolsMode({ isDark, isActive, onSwitchMode }) {
           const doc = docsRef.current.get(page.srcDocId);
           if (!doc) continue;
           const pdfPage = await doc.pdfDoc.getPage(page.srcPageIndex + 1);
-          const baseVp = pdfPage.getViewport({ scale: 1, rotation: page.rotation || 0 });
+          // getViewport's rotation REPLACES the page's internal /Rotate, so
+          // the internal rotation has to be folded in — same as thumbs/viewer.
+          const internal = page.internalRotation ?? (pdfPage.rotate || 0);
+          const totalRotation = (internal + (page.rotation || 0)) % 360;
+          const baseVp = pdfPage.getViewport({ scale: 1, rotation: totalRotation });
           const targetWidth = Math.min(Math.round((baseVp.width / 72) * pdfSettings.imageDpi), 8000);
+          // devicePixelRatio: 1 — exports are sized by the DPI setting alone;
+          // the screen's scale factor must not change file output.
           const { canvas } = await renderPageToCanvas(
             doc.pdfDoc,
             page.srcPageIndex + 1,
             targetWidth,
-            page.rotation || 0,
+            totalRotation,
+            { devicePixelRatio: 1 },
           );
           const blob = await new Promise((res) => canvas.toBlob(res, 'image/jpeg', pdfSettings.imageQuality));
           if (blob) zip.file(`page-${String(i + 1).padStart(3, '0')}.jpg`, blob);
@@ -758,6 +788,7 @@ export default function PdfToolsMode({ isDark, isActive, onSwitchMode }) {
             onSplit={() => setShowSplit(true)}
             onExportRange={() => setShowExportRange(true)}
             onPreview={openPreview}
+            onPreviewSelected={openPreviewSelected}
             onWatermark={() => setShowWatermark(true)}
             onPageNumbers={() => setShowPageNumbers(true)}
             onMetadata={openMetadata}
@@ -794,7 +825,6 @@ export default function PdfToolsMode({ isDark, isActive, onSwitchMode }) {
           onNext={() => activeIndex < pages.length - 1 && setActivePageId(pages[activeIndex + 1].id)}
           onAnnotationsChange={(annotations) => updatePage(activePage.id, { annotations })}
           onStampAllPages={(stamp) => {
-            pages.forEach((p) => revokeThumbUrl(p.id));
             setPages((prev) => prev.map((p) => ({
               ...p,
               thumb: null,
