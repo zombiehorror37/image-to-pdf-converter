@@ -203,7 +203,7 @@ export default function CompressMode({ isDark, isActive, onSwitchMode }) {
 
   const downloadOne = (it) => {
     if (!it.result) return;
-    downloadBlob(it.result.blob, `${baseName(it.name)}-compressed.pdf`);
+    downloadBlob(it.result.blob, it.name);
   };
 
   const downloadAllZip = async () => {
