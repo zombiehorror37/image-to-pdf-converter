@@ -5,6 +5,7 @@ import Header from './components/Header';
 
 const ConvertMode = dynamic(() => import('./components/ConvertMode'), { ssr: false });
 const PdfToolsMode = dynamic(() => import('./components/PdfToolsMode'), { ssr: false });
+const CompressMode = dynamic(() => import('./components/CompressMode'), { ssr: false });
 
 export default function App() {
   const [theme, setTheme] = useState('dark');
@@ -67,6 +68,14 @@ export default function App() {
             className={mode !== 'pdfTools' ? 'hidden' : ''}
           >
             <PdfToolsMode isDark={isDark} isActive={mode === 'pdfTools'} onSwitchMode={setMode} />
+          </div>
+          <div
+            role="tabpanel"
+            id="panel-compress"
+            aria-labelledby="tab-compress"
+            className={mode !== 'compress' ? 'hidden' : ''}
+          >
+            <CompressMode isDark={isDark} isActive={mode === 'compress'} onSwitchMode={setMode} />
           </div>
 
           <footer className={`mt-8 sm:mt-12 text-center text-xs sm:text-sm ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>

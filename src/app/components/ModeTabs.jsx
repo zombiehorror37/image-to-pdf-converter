@@ -1,10 +1,11 @@
 'use client';
-import { FileImage, FileText } from 'lucide-react';
+import { FileImage, FileText, Minimize2 } from 'lucide-react';
 
 export default function ModeTabs({ isDark, mode, onModeChange }) {
   const tabs = [
     { id: 'convert', label: 'Make PDF', icon: FileImage, panelId: 'panel-convert' },
     { id: 'pdfTools', label: 'Edit PDF', icon: FileText, panelId: 'panel-pdfTools' },
+    { id: 'compress', label: 'Compress PDF', icon: Minimize2, panelId: 'panel-compress' },
   ];
 
   return (

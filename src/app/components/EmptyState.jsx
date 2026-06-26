@@ -11,11 +11,17 @@ const STEPS = {
     { num: 2, label: 'Edit', title: 'Reorder & annotate', desc: 'Rotate pages, drag to reorder, highlight or draw' },
     { num: 3, label: 'Export', title: 'Save or split', desc: 'Download edited PDF, extract pages, or split by range' },
   ],
+  compress: [
+    { num: 1, label: 'Upload', title: 'Drop PDFs or a ZIP', desc: 'Add individual PDFs or a ZIP archive full of them' },
+    { num: 2, label: 'Choose', title: 'Pick a level', desc: 'Light to Extreme — balance size against quality' },
+    { num: 3, label: 'Download', title: 'Get smaller files', desc: 'Save each PDF or download them all as a ZIP' },
+  ],
 };
 
 const CROSSLINK = {
   convert: { label: 'Have an existing PDF?', cta: 'Switch to Edit PDF', target: 'pdfTools' },
-  pdfTools: { label: 'Working with images instead?', cta: 'Switch to Make PDF', target: 'convert' },
+  pdfTools: { label: 'Need to shrink a PDF?', cta: 'Switch to Compress PDF', target: 'compress' },
+  compress: { label: 'Want to edit a PDF instead?', cta: 'Switch to Edit PDF', target: 'pdfTools' },
 };
 
 export default function EmptyState({ isDark, mode, onSwitchMode }) {

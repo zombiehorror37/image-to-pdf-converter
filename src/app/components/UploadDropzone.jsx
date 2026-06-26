@@ -3,7 +3,12 @@ import { FileImage, Archive, Clipboard, FileText } from 'lucide-react';
 
 export default function UploadDropzone({ isDark, mode, onDrop, onFiles, inputId = 'fileInput' }) {
   const isPdfMode = mode === 'pdfTools';
-  const accept = isPdfMode ? 'application/pdf,.pdf' : 'image/*,.zip,.heic,.heif,.tif,.tiff,.avif';
+  const isCompressMode = mode === 'compress';
+  const accept = isCompressMode
+    ? 'application/pdf,.pdf,application/zip,.zip'
+    : isPdfMode
+      ? 'application/pdf,.pdf'
+      : 'image/*,.zip,.heic,.heif,.tif,.tiff,.avif';
 
   const onDragOver = (e) => e.preventDefault();
   const handleDrop = (e) => {
@@ -28,7 +33,7 @@ export default function UploadDropzone({ isDark, mode, onDrop, onFiles, inputId 
     <div
       role="button"
       tabIndex={0}
-      aria-label={isPdfMode ? 'Upload PDF files' : 'Upload images or ZIP files'}
+      aria-label={isCompressMode ? 'Upload PDFs or a ZIP of PDFs' : isPdfMode ? 'Upload PDF files' : 'Upload images or ZIP files'}
       className={`relative border-2 border-dashed rounded-2xl p-6 sm:p-10 lg:p-12 mb-6 sm:mb-8 text-center
                  transition-all duration-300 cursor-pointer active:scale-[0.99] group ${
         isDark
@@ -42,7 +47,20 @@ export default function UploadDropzone({ isDark, mode, onDrop, onFiles, inputId 
     >
       <div className="flex flex-col items-center space-y-4">
         <div className="flex space-x-3 sm:space-x-4">
-          {isPdfMode ? (
+          {isCompressMode ? (
+            <>
+              <div className={`p-3 sm:p-4 rounded-2xl group-hover:scale-110 transition-transform ${
+                isDark ? 'bg-red-500/20' : 'bg-red-100'
+              }`}>
+                <FileText className="w-8 h-8 sm:w-12 sm:h-12 text-red-500" />
+              </div>
+              <div className={`p-3 sm:p-4 rounded-2xl group-hover:scale-110 transition-transform ${
+                isDark ? 'bg-purple-500/20' : 'bg-purple-100'
+              }`}>
+                <Archive className="w-8 h-8 sm:w-12 sm:h-12 text-purple-500" />
+              </div>
+            </>
+          ) : isPdfMode ? (
             <div className={`p-3 sm:p-4 rounded-2xl group-hover:scale-110 transition-transform ${
               isDark ? 'bg-red-500/20' : 'bg-red-100'
             }`}>
@@ -70,17 +88,23 @@ export default function UploadDropzone({ isDark, mode, onDrop, onFiles, inputId 
         </div>
         <div>
           <p className="text-lg sm:text-xl font-medium mb-1">
-            {isPdfMode ? 'Drop PDF files here' : 'Drop images or ZIP files here'}
+            {isCompressMode
+              ? 'Drop PDFs or a ZIP of PDFs here'
+              : isPdfMode
+                ? 'Drop PDF files here'
+                : 'Drop images or ZIP files here'}
           </p>
           <p className={`text-sm sm:text-base ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-            {isPdfMode
+            {isPdfMode || isCompressMode
               ? 'or tap to browse'
               : 'or tap to browse • Ctrl+V to paste from clipboard'}
           </p>
           <p className={`text-xs sm:text-sm mt-2 ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>
-            {isPdfMode
-              ? 'Supports: PDF (multi-page, encrypted, large files)'
-              : 'Supports: JPG, PNG, GIF, BMP, WebP, SVG, HEIC, TIFF, AVIF + ZIP archives'}
+            {isCompressMode
+              ? 'Supports: PDF files and ZIP archives containing PDFs'
+              : isPdfMode
+                ? 'Supports: PDF (multi-page, encrypted, large files)'
+                : 'Supports: JPG, PNG, GIF, BMP, WebP, SVG, HEIC, TIFF, AVIF + ZIP archives'}
           </p>
         </div>
       </div>

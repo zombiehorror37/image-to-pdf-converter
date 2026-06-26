@@ -5,11 +5,13 @@ import ModeTabs from './ModeTabs';
 const TITLES = {
   convert: 'Image to PDF',
   pdfTools: 'PDF Editor',
+  compress: 'Compress PDF',
 };
 
 const SUBTITLES = {
   convert: 'Turn images into a PDF in seconds · Ctrl+V to paste',
   pdfTools: 'View, rotate, merge, split, and annotate PDFs locally',
+  compress: 'Shrink PDF file sizes locally — drop PDFs or a ZIP of PDFs',
 };
 
 export default function Header({ isDark, onToggleTheme, mode, onModeChange }) {
