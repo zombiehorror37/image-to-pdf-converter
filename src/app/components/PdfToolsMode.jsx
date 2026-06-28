@@ -24,9 +24,19 @@ import { usePersistedSettings } from '../hooks/usePersistedSettings';
 import { useSessionPersistence } from '../hooks/useSessionPersistence';
 import { useEditorShortcuts } from '../hooks/useEditorShortcuts';
 import { useAsyncOperation } from '../hooks/useAsyncOperation';
-import { formatSize } from '../lib/utils';
+import { formatSize, naturalCompare } from '../lib/utils';
 
 const THUMB_WIDTH = 200;
+
+// Pages don't have a per-item size, so name (grouped by source doc) and a plain
+// reverse cover the useful cases — including "restore order" for a single PDF
+// (name sort tie-breaks on original page index) and reversing scanned-backwards
+// documents.
+const SORT_OPTIONS = [
+  { id: 'name-asc', label: 'File name (A → Z)' },
+  { id: 'name-desc', label: 'File name (Z → A)' },
+  { id: 'reverse', label: 'Reverse order' },
+];
 const THUMB_CONCURRENCY = 3; // parallel page renders
 const SESSION_KEY = 'pdfTools';
 const SETTINGS_KEY = 'pdfTools';
@@ -412,6 +422,23 @@ export default function PdfToolsMode({ isDark, isActive, onSwitchMode }) {
     });
   };
 
+  // One-shot sort, undoable via setPages history; manual drag still works after.
+  const sortPages = (id) => {
+    setPages((prev) => {
+      const next = [...prev];
+      if (id === 'reverse') { next.reverse(); return next; }
+      // Group by source document, then keep original page order within each.
+      const cmp = (a, b) => {
+        const n = naturalCompare(a.docName, b.docName);
+        return n !== 0 ? n : a.srcPageIndex - b.srcPageIndex;
+      };
+      if (id === 'name-asc') next.sort(cmp);
+      else if (id === 'name-desc') next.sort((a, b) => -cmp(a, b));
+      else return prev;
+      return next;
+    });
+  };
+
   const togglePageSelection = (id) => {
     setSelectedPages((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   };
@@ -774,6 +801,8 @@ export default function PdfToolsMode({ isDark, isActive, onSwitchMode }) {
             }}
             onSelectAll={selectAll}
             allSelected={selectedPages.size === pages.length}
+            onSort={sortPages}
+            sortOptions={SORT_OPTIONS}
             onRotateAll={rotateAll}
             onRotateSelected={rotateSelected}
             onDeleteSelected={deleteSelected}

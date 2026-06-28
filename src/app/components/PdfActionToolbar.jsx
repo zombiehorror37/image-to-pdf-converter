@@ -6,6 +6,7 @@ import {
   Droplets, Hash, FileText, ChevronDown, ListFilter,
 } from 'lucide-react';
 import { parseRanges } from '../lib/utils';
+import SortMenu from './SortMenu';
 
 export default function PdfActionToolbar({
   isDark,
@@ -16,6 +17,8 @@ export default function PdfActionToolbar({
   onToggleSelection,
   onSelectAll,
   allSelected,
+  onSort,
+  sortOptions,
   onRotateAll,
   onRotateSelected,
   onDeleteSelected,
@@ -107,6 +110,16 @@ export default function PdfActionToolbar({
             <CheckSquare className="w-4 h-4" />
             <span className="hidden sm:inline">{isSelectionMode ? 'Cancel' : 'Select'}</span>
           </button>
+
+          {/* Sort */}
+          {onSort && (
+            <SortMenu
+              isDark={isDark}
+              options={sortOptions}
+              onSort={onSort}
+              disabled={isProcessing || pageCount === 0}
+            />
+          )}
 
           {/* Rotate All */}
           <button onClick={onRotateAll} disabled={isProcessing || pageCount === 0}

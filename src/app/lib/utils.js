@@ -20,11 +20,14 @@ export const getImageMimeType = (filename) => {
   return mimeTypes[ext] || 'image/jpeg';
 };
 
-export const naturalSort = (a, b) =>
-  a.name.toLowerCase().localeCompare(b.name.toLowerCase(), undefined, {
+// Natural ("1, 2, 10" not "1, 10, 2") case-insensitive string compare.
+export const naturalCompare = (a, b) =>
+  (a || '').toLowerCase().localeCompare((b || '').toLowerCase(), undefined, {
     numeric: true,
     sensitivity: 'base',
   });
+
+export const naturalSort = (a, b) => naturalCompare(a.name, b.name);
 
 export const formatSize = (bytes) => {
   if (bytes < 1024) return bytes + ' B';

@@ -1,5 +1,6 @@
 'use client';
 import { Download, Eye, CheckSquare, Square, RotateCw, Trash2, Undo2, Redo2 } from 'lucide-react';
+import SortMenu from './SortMenu';
 
 export default function Toolbar({
   isDark,
@@ -19,6 +20,8 @@ export default function Toolbar({
   canUndo,
   canRedo,
   allSelected,
+  onSort,
+  sortOptions,
 }) {
   return (
     <div className="flex flex-col gap-4 mb-4 sm:mb-6">
@@ -70,6 +73,14 @@ export default function Toolbar({
             <CheckSquare className="w-4 h-4" />
             <span className="hidden sm:inline">{isSelectionMode ? 'Cancel' : 'Select'}</span>
           </button>
+          {onSort && (
+            <SortMenu
+              isDark={isDark}
+              options={sortOptions}
+              onSort={onSort}
+              disabled={isProcessing || imageCount === 0}
+            />
+          )}
           <button
             onClick={onRotateAll}
             disabled={isProcessing || imageCount === 0}

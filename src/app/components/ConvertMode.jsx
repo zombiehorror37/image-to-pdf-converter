@@ -33,6 +33,13 @@ const DEFAULT_SETTINGS = {
   fitToPage: true,
 };
 
+const SORT_OPTIONS = [
+  { id: 'name-asc', label: 'Name (A → Z)' },
+  { id: 'name-desc', label: 'Name (Z → A)' },
+  { id: 'size-asc', label: 'Size (small → large)' },
+  { id: 'size-desc', label: 'Size (large → small)' },
+];
+
 // Run `fn` over `items` with at most `limit` operations in flight.
 // Preserves index order in the returned array.
 const runWithConcurrency = async (items, limit, fn) => {
@@ -305,6 +312,22 @@ export default function ConvertMode({ isDark, isActive, onSwitchMode }) {
     });
   };
 
+  // One-shot sort. Reorders through setImages so it's a normal, undoable edit
+  // and the user can still drag to fine-tune afterwards.
+  const sortImages = (id) => {
+    setImages((prev) => {
+      const next = [...prev];
+      switch (id) {
+        case 'name-asc': next.sort(naturalSort); break;
+        case 'name-desc': next.sort((a, b) => naturalSort(b, a)); break;
+        case 'size-asc': next.sort((a, b) => a.size - b.size); break;
+        case 'size-desc': next.sort((a, b) => b.size - a.size); break;
+        default: return prev;
+      }
+      return next;
+    });
+  };
+
   const runGeneration = async (forPreview) => {
     if (images.length === 0) return;
     const result = await op.run(async ({ signal, setStep, setProgress }) => {
@@ -420,6 +443,8 @@ export default function ConvertMode({ isDark, isActive, onSwitchMode }) {
               if (isSelectionMode) setSelectedImages(new Set());
             }}
             onSelectAll={selectAll}
+            onSort={sortImages}
+            sortOptions={SORT_OPTIONS}
             onPreview={() => runGeneration(true)}
             onConvert={() => runGeneration(false)}
             onRotateSelected={rotateSelected}

@@ -15,6 +15,7 @@ import UploadDropzone from './UploadDropzone';
 import ProcessingStatus from './ProcessingStatus';
 import EmptyState from './EmptyState';
 import Toasts from './Toasts';
+import SortMenu from './SortMenu';
 import { useToasts } from '../hooks/useToasts';
 import { useAsyncOperation } from '../hooks/useAsyncOperation';
 import {
@@ -24,7 +25,15 @@ import {
   compressPdf,
   optimizePdf,
 } from '../lib/pdfCompress';
-import { formatSize } from '../lib/utils';
+import { formatSize, naturalCompare } from '../lib/utils';
+
+const SORT_OPTIONS = [
+  { id: 'name-asc', label: 'Name (A → Z)' },
+  { id: 'name-desc', label: 'Name (Z → A)' },
+  { id: 'size-desc', label: 'Size (large → small)' },
+  { id: 'size-asc', label: 'Size (small → large)' },
+  { id: 'savings-desc', label: 'Savings (high → low)' },
+];
 
 const makeId = () =>
   (typeof crypto !== 'undefined' && crypto.randomUUID)
@@ -148,6 +157,27 @@ export default function CompressMode({ isDark, isActive, onSwitchMode }) {
 
   const removeItem = (id) => setItems((prev) => prev.filter((it) => it.id !== id));
   const clearAll = () => setItems([]);
+
+  // Items without a result yet sort to the bottom for the savings view.
+  const savingsRatio = (it) =>
+    it.result && it.result.originalSize > 0
+      ? (it.result.originalSize - it.result.compressedSize) / it.result.originalSize
+      : -1;
+
+  const sortItems = (id) => {
+    setItems((prev) => {
+      const next = [...prev];
+      switch (id) {
+        case 'name-asc': next.sort((a, b) => naturalCompare(a.name, b.name)); break;
+        case 'name-desc': next.sort((a, b) => naturalCompare(b.name, a.name)); break;
+        case 'size-asc': next.sort((a, b) => a.originalSize - b.originalSize); break;
+        case 'size-desc': next.sort((a, b) => b.originalSize - a.originalSize); break;
+        case 'savings-desc': next.sort((a, b) => savingsRatio(b) - savingsRatio(a)); break;
+        default: return prev;
+      }
+      return next;
+    });
+  };
 
   const pendingCount = useMemo(
     () => items.filter((it) => it.status === 'ready' || it.status === 'error').length,
@@ -370,6 +400,13 @@ export default function CompressMode({ isDark, isActive, onSwitchMode }) {
               <Trash2 className="w-4 h-4" />
               Clear all
             </button>
+
+            <SortMenu
+              isDark={isDark}
+              options={SORT_OPTIONS}
+              onSort={sortItems}
+              disabled={op.isProcessing || items.length < 2}
+            />
 
             {totals.original > 0 && (
               <div className={`ml-auto text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
