@@ -1,9 +1,13 @@
 // pdf-lib wrappers for all PDF Tools operations:
 // rotate / reorder / delete / merge / split / annotate / watermark / page-numbers / metadata
 
+// @cantoo/pdf-lib is an API-compatible fork of pdf-lib that can decrypt the
+// Standard security handler. Plain pdf-lib only *ignores* encryption — it
+// copies the still-encrypted content streams verbatim, so exporting a
+// "secured" PDF produced blank pages.
 let pdfLibPromise;
 const loadPdfLib = async () => {
-  if (!pdfLibPromise) pdfLibPromise = import('pdf-lib');
+  if (!pdfLibPromise) pdfLibPromise = import('@cantoo/pdf-lib');
   return pdfLibPromise;
 };
 
@@ -17,7 +21,19 @@ const sourceToBytes = async (source) => {
 const loadDoc = async (source) => {
   const { PDFDocument } = await loadPdfLib();
   const bytes = await sourceToBytes(source);
-  return PDFDocument.load(bytes, { ignoreEncryption: true });
+  try {
+    // An empty password decrypts permission-only / owner-password "secured"
+    // PDFs (the common case) so copied pages keep their real content. Plain
+    // PDFs load unaffected.
+    return await PDFDocument.load(bytes, { password: '' });
+  } catch (err) {
+    // A genuine open-password PDF can't be decrypted blindly. Surface that
+    // clearly instead of silently emitting blank pages.
+    if (/password|encrypt/i.test(err?.message || '')) {
+      throw new Error('This PDF is password-protected and can’t be exported. Remove the password first, then try again.');
+    }
+    throw err;
+  }
 };
 
 // ─── exportEditedPdf ────────────────────────────────────────────────────────

@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(npm ls *)",
-      "Bash(git -C \"C:/Users/zombi/Desktop/Projects/image-to-pdf-converter\" diff)"
+      "Bash(git -C \"C:/Users/zombi/Desktop/Projects/image-to-pdf-converter\" diff)",
+      "Bash(node scripts/test-cantoo2.mjs)",
+      "Bash(node -e ' *)"
     ]
   }
 }

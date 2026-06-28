@@ -12,9 +12,12 @@
 
 import { loadPdfDocument, renderPageToCanvas } from './pdfRender';
 
+// @cantoo/pdf-lib is an API-compatible fork of pdf-lib that can decrypt the
+// Standard security handler, so the keep-text re-save below works on "secured"
+// PDFs instead of emitting blank/corrupt pages.
 let pdfLibPromise;
 const loadPdfLib = async () => {
-  if (!pdfLibPromise) pdfLibPromise = import('pdf-lib');
+  if (!pdfLibPromise) pdfLibPromise = import('@cantoo/pdf-lib');
   return pdfLibPromise;
 };
 
@@ -48,7 +51,16 @@ const toBytes = async (source) => {
 
 const loadDoc = async (bytes) => {
   const { PDFDocument } = await loadPdfLib();
-  return PDFDocument.load(bytes, { ignoreEncryption: true });
+  try {
+    // Empty password decrypts permission-only "secured" PDFs; plain PDFs load
+    // unaffected. Without this the re-save copies still-encrypted streams.
+    return await PDFDocument.load(bytes, { password: '' });
+  } catch (err) {
+    if (/password|encrypt/i.test(err?.message || '')) {
+      throw new Error('This PDF is password-protected and can’t be processed. Remove the password first, then try again.');
+    }
+    throw err;
+  }
 };
 
 // Lossless "keep text" path: re-serialize the PDF with object streams and drop

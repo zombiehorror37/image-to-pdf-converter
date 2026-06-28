@@ -2,7 +2,7 @@
 //  - test-a4.pdf: 3 A4 portrait pages with big labels
 //  - test-letter-landscape.pdf: 3 letter landscape pages
 //  - test-rotated.pdf: 2 pages with /Rotate 90 (simulates a scanned doc)
-import { PDFDocument, rgb, StandardFonts, degrees } from 'pdf-lib';
+import { PDFDocument, rgb, StandardFonts, degrees } from '@cantoo/pdf-lib';
 import { writeFileSync, mkdirSync } from 'fs';
 
 mkdirSync('test-fixtures', { recursive: true });
