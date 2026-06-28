@@ -24,6 +24,12 @@
 .DS_Store
 *.pem
 
+# self-hosted Tesseract OSD assets (regenerate with `npm run setup:ocr`)
+/public/tesseract/
+
+# manual test fixtures (regenerate with `node scripts/make-test-pdfs.mjs`)
+/test-fixtures/
+
 # debug
 npm-debug.log*
 yarn-debug.log*

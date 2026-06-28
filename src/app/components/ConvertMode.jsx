@@ -13,6 +13,7 @@ import SessionRestoreBanner from './SessionRestoreBanner';
 import { isImageFile, getImageMimeType, naturalSort } from '../lib/utils';
 import { createImageObject } from '../lib/imageProcessing';
 import { CancelledError, generatePDFInWorker } from '../lib/pdfGeneratorWorker';
+import { detectCorrection, imageToDetectionCanvas } from '../lib/autoRotate';
 import { useHistory } from '../hooks/useHistory';
 import { useToasts } from '../hooks/useToasts';
 import { usePersistedSettings } from '../hooks/usePersistedSettings';
@@ -293,6 +294,51 @@ export default function ConvertMode({ isDark, isActive, onSwitchMode }) {
     ));
   };
 
+  // Auto-rotate: detect each image's true orientation (OSD) and set rotation to
+  // make it upright. Runs detection on the decoded preview (capped width); the
+  // detected correction is absolute, so it overrides any prior manual rotation.
+  const autoRotateImages = async (ids) => {
+    const targets = ids ? images.filter((img) => ids.has(img.id)) : images;
+    if (targets.length === 0) return;
+
+    const corrections = new Map();
+    let upright = 0;
+    let uncertain = 0;
+    let cancelled = false;
+
+    await op.run(async ({ signal, setStep, setProgress }) => {
+      for (let i = 0; i < targets.length; i++) {
+        if (signal.aborted) { cancelled = true; return; }
+        setStep(`Detecting orientation ${i + 1} of ${targets.length}…`);
+        const img = targets[i];
+        try {
+          const canvas = await imageToDetectionCanvas(img.preview);
+          const { correction, certain } = await detectCorrection(canvas);
+          if (!certain) uncertain++;
+          else if (correction === 0) upright++;
+          else corrections.set(img.id, correction);
+        } catch {
+          uncertain++;
+        }
+        setProgress(Math.round(((i + 1) / targets.length) * 100));
+      }
+    }, { initialStep: 'Loading orientation detector…' });
+
+    if (corrections.size > 0) {
+      setImages((prev) => prev.map((img) =>
+        corrections.has(img.id) ? { ...img, rotation: corrections.get(img.id) } : img,
+      ));
+    }
+
+    const parts = [`Auto-rotated ${corrections.size}`];
+    if (upright) parts.push(`${upright} already upright`);
+    if (uncertain) parts.push(`${uncertain} uncertain`);
+    pushToast({
+      type: cancelled ? 'info' : 'success',
+      message: (cancelled ? 'Cancelled — ' : '') + parts.join(' · '),
+    });
+  };
+
   const moveImage = (index, direction) => {
     const newIndex = direction === 'up' ? index - 1 : index + 1;
     if (newIndex < 0 || newIndex >= images.length) return;
@@ -445,6 +491,8 @@ export default function ConvertMode({ isDark, isActive, onSwitchMode }) {
             onSelectAll={selectAll}
             onSort={sortImages}
             sortOptions={SORT_OPTIONS}
+            onAutoRotate={() => autoRotateImages()}
+            onAutoRotateSelected={() => autoRotateImages(selectedImages)}
             onPreview={() => runGeneration(true)}
             onConvert={() => runGeneration(false)}
             onRotateSelected={rotateSelected}

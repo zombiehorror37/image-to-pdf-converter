@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   Download, Eye, Image as ImageIcon, CheckSquare, Square,
   RotateCw, Trash2, Undo2, Redo2, Scissors,
-  Droplets, Hash, FileText, ChevronDown, ListFilter,
+  Droplets, Hash, FileText, ChevronDown, ListFilter, Wand2,
 } from 'lucide-react';
 import { parseRanges } from '../lib/utils';
 import SortMenu from './SortMenu';
@@ -21,6 +21,8 @@ export default function PdfActionToolbar({
   sortOptions,
   onRotateAll,
   onRotateSelected,
+  onAutoRotate,
+  onAutoRotateSelected,
   onDeleteSelected,
   onExtractSelected,
   onSelectRange,
@@ -127,6 +129,15 @@ export default function PdfActionToolbar({
             <RotateCw className="w-4 h-4" />
             <span className="hidden sm:inline">Rotate all</span>
           </button>
+
+          {/* Auto-rotate */}
+          {onAutoRotate && (
+            <button onClick={onAutoRotate} disabled={isProcessing || pageCount === 0}
+              title="Auto-rotate (detect & fix orientation)" aria-label="Auto-rotate all pages" className={textBtn()}>
+              <Wand2 className="w-4 h-4" />
+              <span className="hidden sm:inline">Auto-rotate</span>
+            </button>
+          )}
 
           {/* Split */}
           <button onClick={onSplit} disabled={isProcessing || pageCount === 0}
@@ -245,6 +256,16 @@ export default function PdfActionToolbar({
           >
             <RotateCw className="w-4 h-4" /> Rotate
           </button>
+          {onAutoRotateSelected && (
+            <button
+              onClick={onAutoRotateSelected}
+              disabled={selectedCount === 0 || isProcessing}
+              title="Auto-rotate selected"
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-1.5 transition-all disabled:opacity-50 ${isDark ? 'bg-gray-700 hover:bg-gray-600' : 'bg-white hover:bg-gray-50 shadow-sm'}`}
+            >
+              <Wand2 className="w-4 h-4" /> Auto-rotate
+            </button>
+          )}
           <button
             onClick={onPreviewSelected}
             disabled={selectedCount === 0 || isProcessing}

@@ -1,5 +1,5 @@
 'use client';
-import { Download, Eye, CheckSquare, Square, RotateCw, Trash2, Undo2, Redo2 } from 'lucide-react';
+import { Download, Eye, CheckSquare, Square, RotateCw, Trash2, Undo2, Redo2, Wand2 } from 'lucide-react';
 import SortMenu from './SortMenu';
 
 export default function Toolbar({
@@ -22,6 +22,8 @@ export default function Toolbar({
   allSelected,
   onSort,
   sortOptions,
+  onAutoRotate,
+  onAutoRotateSelected,
 }) {
   return (
     <div className="flex flex-col gap-4 mb-4 sm:mb-6">
@@ -93,6 +95,20 @@ export default function Toolbar({
             <RotateCw className="w-4 h-4" />
             <span className="hidden sm:inline">Rotate all</span>
           </button>
+          {onAutoRotate && (
+            <button
+              onClick={onAutoRotate}
+              disabled={isProcessing || imageCount === 0}
+              title="Auto-rotate (detect & fix orientation)"
+              aria-label="Auto-rotate all images"
+              className={`px-4 py-2.5 rounded-xl font-medium flex items-center gap-2 text-sm transition-all disabled:opacity-50 ${
+                isDark ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
+              }`}
+            >
+              <Wand2 className="w-4 h-4" />
+              <span className="hidden sm:inline">Auto-rotate</span>
+            </button>
+          )}
           <button
             onClick={onPreview}
             disabled={isProcessing}
@@ -153,6 +169,18 @@ export default function Toolbar({
           >
             <RotateCw className="w-4 h-4" /> Rotate
           </button>
+          {onAutoRotateSelected && (
+            <button
+              onClick={onAutoRotateSelected}
+              disabled={selectedCount === 0}
+              title="Auto-rotate selected"
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-1.5 transition-all disabled:opacity-50 ${
+                isDark ? 'bg-gray-700 hover:bg-gray-600' : 'bg-white hover:bg-gray-50 shadow-sm'
+              }`}
+            >
+              <Wand2 className="w-4 h-4" /> Auto-rotate
+            </button>
+          )}
           <button
             onClick={onDeleteSelected}
             disabled={selectedCount === 0}

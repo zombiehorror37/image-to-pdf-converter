@@ -17,6 +17,7 @@ import WatermarkDialog from './WatermarkDialog';
 import PageNumbersDialog from './PageNumbersDialog';
 import MetadataDialog from './MetadataDialog';
 import { loadPdfDocument, renderPageToCanvas, canvasToBlobUrl } from '../lib/pdfRender';
+import { detectCorrection } from '../lib/autoRotate';
 import { exportEditedPdf, applyWatermark, applyPageNumbers, updateMetadata } from '../lib/pdfTools';
 import { useHistory } from '../hooks/useHistory';
 import { useToasts } from '../hooks/useToasts';
@@ -460,6 +461,71 @@ export default function PdfToolsMode({ isDark, isActive, onSwitchMode }) {
     bumpThumbVersion();
   };
 
+  // Auto-rotate: detect each page's true orientation (OSD) and set rotation to
+  // make it upright. Detection runs on the page rendered at its natural (internal
+  // /Rotate) orientation, so the correction is absolute — `rotation` is set, not
+  // accumulated. Mirrors rotatePage's thumb invalidation so thumbs re-render.
+  const autoRotatePages = async (ids) => {
+    const targets = ids ? pages.filter((p) => ids.has(p.id)) : pages;
+    if (targets.length === 0) return;
+
+    const corrections = new Map();
+    let upright = 0;
+    let uncertain = 0;
+    let cancelled = false;
+
+    await op.run(async ({ signal, setStep, setProgress }) => {
+      for (let i = 0; i < targets.length; i++) {
+        if (signal.aborted) { cancelled = true; return; }
+        setStep(`Detecting orientation ${i + 1} of ${targets.length}…`);
+        const page = targets[i];
+        const doc = docsRef.current.get(page.srcDocId);
+        if (!doc) { uncertain++; continue; }
+        try {
+          let internal = page.internalRotation;
+          if (internal == null) {
+            try {
+              const pdfPage = await doc.pdfDoc.getPage(page.srcPageIndex + 1);
+              internal = pdfPage.rotate || 0;
+            } catch { internal = 0; }
+          }
+          const { canvas } = await renderPageToCanvas(
+            doc.pdfDoc,
+            page.srcPageIndex + 1,
+            1200,
+            internal,
+            { devicePixelRatio: 1 },
+          );
+          const { correction, certain } = await detectCorrection(canvas);
+          canvas.width = 0;
+          canvas.height = 0;
+          if (!certain) uncertain++;
+          else if (((correction - (page.rotation || 0)) % 360 + 360) % 360 === 0) upright++;
+          else corrections.set(page.id, { rotation: correction, internalRotation: internal });
+        } catch {
+          uncertain++;
+        }
+        setProgress(Math.round(((i + 1) / targets.length) * 100));
+      }
+    }, { initialStep: 'Loading orientation detector…' });
+
+    if (corrections.size > 0) {
+      setPages((prev) => prev.map((p) => {
+        const c = corrections.get(p.id);
+        return c ? { ...p, rotation: c.rotation, internalRotation: c.internalRotation, thumb: null } : p;
+      }));
+      bumpThumbVersion();
+    }
+
+    const parts = [`Auto-rotated ${corrections.size}`];
+    if (upright) parts.push(`${upright} already upright`);
+    if (uncertain) parts.push(`${uncertain} uncertain`);
+    pushToast({
+      type: cancelled ? 'info' : 'success',
+      message: (cancelled ? 'Cancelled — ' : '') + parts.join(' · '),
+    });
+  };
+
   const deleteSelected = () => {
     setPages((prev) => prev.filter((p) => !selectedPages.has(p.id)));
     setSelectedPages(new Set());
@@ -805,6 +871,8 @@ export default function PdfToolsMode({ isDark, isActive, onSwitchMode }) {
             sortOptions={SORT_OPTIONS}
             onRotateAll={rotateAll}
             onRotateSelected={rotateSelected}
+            onAutoRotate={() => autoRotatePages()}
+            onAutoRotateSelected={() => autoRotatePages(selectedPages)}
             onDeleteSelected={deleteSelected}
             onExtractSelected={extractSelected}
             onSelectRange={selectPagesByRange}
