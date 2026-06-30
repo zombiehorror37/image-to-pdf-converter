@@ -35,6 +35,52 @@ const processImageInWorker = async (dataUrl, rotation, quality) => {
   return { blob: outBlob, width: canvas.width, height: canvas.height };
 };
 
+// Build a one-page PDF (Blob) for a single image, honoring the same
+// preserve-size / page-size / fit-to-page settings as the combined export.
+// Used by `generateSeparate` so each image becomes its own PDF.
+const buildSinglePagePdf = async (image, settings) => {
+  const { blob, width, height } = await processImageInWorker(
+    image.dataUrl,
+    image.rotation,
+    settings.quality,
+  );
+  const dataUrl = await blobToDataUrl(blob);
+  let pdf;
+
+  if (settings.preserveSize) {
+    const pixelsToMM = 25.4 / settings.dpi;
+    const wMm = width * pixelsToMM;
+    const hMm = height * pixelsToMM;
+    pdf = new jsPDF({
+      orientation: wMm > hMm ? 'landscape' : 'portrait',
+      unit: 'mm',
+      format: [wMm, hMm],
+    });
+    pdf.addImage(dataUrl, 'JPEG', 0, 0, wMm, hMm);
+  } else {
+    pdf = new jsPDF({
+      orientation: settings.orientation,
+      unit: 'mm',
+      format: settings.pageSize.toLowerCase(),
+    });
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    const scale = settings.fitToPage
+      ? Math.min(pageWidth / width, pageHeight / height)
+      : Math.max(pageWidth / width, pageHeight / height);
+    const finalWidth = width * scale;
+    const finalHeight = height * scale;
+    pdf.addImage(
+      dataUrl, 'JPEG',
+      (pageWidth - finalWidth) / 2,
+      (pageHeight - finalHeight) / 2,
+      finalWidth, finalHeight,
+    );
+  }
+
+  return pdf.output('blob');
+};
+
 const reportProgress = (done, total) => {
   const progress = Math.round((done / total) * 100);
   const step = done < total
@@ -131,10 +177,29 @@ const generate = async ({ images, settings }) => {
   self.postMessage({ type: 'done', pdfBlob });
 };
 
+// One PDF per image (in input order), returned as an array of Blobs. The host
+// names them and bundles a ZIP — keeps the worker focused on PDF building.
+const generateSeparate = async ({ images, settings }) => {
+  const total = images.length;
+  const blobs = [];
+  for (let i = 0; i < total; i++) {
+    self.postMessage({
+      type: 'progress',
+      progress: Math.round((i / total) * 100),
+      step: `Building PDF ${i + 1} of ${total}...`,
+    });
+    blobs.push(await buildSinglePagePdf(images[i], settings));
+  }
+  self.postMessage({ type: 'progress', progress: 100, step: 'Finalizing...' });
+  self.postMessage({ type: 'doneSeparate', blobs });
+};
+
 self.onmessage = async (event) => {
-  if (event.data?.type !== 'generate') return;
+  const type = event.data?.type;
+  if (type !== 'generate' && type !== 'generateSeparate') return;
   try {
-    await generate(event.data);
+    if (type === 'generateSeparate') await generateSeparate(event.data);
+    else await generate(event.data);
   } catch (err) {
     self.postMessage({
       type: 'error',

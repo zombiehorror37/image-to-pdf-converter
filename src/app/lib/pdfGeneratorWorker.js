@@ -8,25 +8,10 @@ export class CancelledError extends Error {
   }
 }
 
-export const generatePDFInWorker = async (
-  images,
-  settings,
-  onProgress = () => {},
-  onStep = () => {},
-  signal,
-) => {
-  if (images.length === 0) return null;
-
-  onStep('Preparing images...');
-
-  // Hand the data URLs straight to the worker — it can decode them off the
-  // UI thread via createImageBitmap. Avoids N fetches on main.
-  const payloadImages = images.map((img) => ({
-    dataUrl: img.preview,
-    rotation: img.rotation || 0,
-  }));
-
-  return new Promise((resolve, reject) => {
+// Shared worker lifecycle: post `message`, stream progress, resolve when the
+// worker reports `doneType` (mapped through `extract`), reject on error/abort.
+const runWorker = (message, { onProgress = () => {}, onStep = () => {}, signal, doneType, extract }) =>
+  new Promise((resolve, reject) => {
     let worker;
     try {
       worker = new Worker(new URL('../workers/pdfWorker.js', import.meta.url), {
@@ -63,8 +48,8 @@ export const generatePDFInWorker = async (
       if (data.type === 'progress') {
         onProgress(data.progress);
         if (data.step) onStep(data.step);
-      } else if (data.type === 'done') {
-        if (finalize()) resolve(data.pdfBlob);
+      } else if (data.type === doneType) {
+        if (finalize()) resolve(extract(data));
       } else if (data.type === 'error') {
         if (finalize()) reject(new Error(data.message || 'Worker failed'));
       }
@@ -74,6 +59,42 @@ export const generatePDFInWorker = async (
       if (finalize()) reject(new Error(err.message || 'Worker error'));
     };
 
-    worker.postMessage({ type: 'generate', images: payloadImages, settings });
+    worker.postMessage(message);
   });
+
+// Hand the data URLs straight to the worker — it can decode them off the UI
+// thread via createImageBitmap. Avoids N fetches on main.
+const toPayload = (images) =>
+  images.map((img) => ({ dataUrl: img.preview, rotation: img.rotation || 0 }));
+
+// Combine all images into a single multi-page PDF (Blob).
+export const generatePDFInWorker = async (
+  images,
+  settings,
+  onProgress = () => {},
+  onStep = () => {},
+  signal,
+) => {
+  if (images.length === 0) return null;
+  onStep('Preparing images...');
+  return runWorker(
+    { type: 'generate', images: toPayload(images), settings },
+    { onProgress, onStep, signal, doneType: 'done', extract: (d) => d.pdfBlob },
+  );
+};
+
+// One single-page PDF per image, returned as an array of Blobs in input order.
+export const generateSeparatePDFsInWorker = async (
+  images,
+  settings,
+  onProgress = () => {},
+  onStep = () => {},
+  signal,
+) => {
+  if (images.length === 0) return [];
+  onStep('Preparing images...');
+  return runWorker(
+    { type: 'generateSeparate', images: toPayload(images), settings },
+    { onProgress, onStep, signal, doneType: 'doneSeparate', extract: (d) => d.blobs },
+  );
 };

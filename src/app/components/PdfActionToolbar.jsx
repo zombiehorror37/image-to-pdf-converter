@@ -1,12 +1,13 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import {
   Download, Eye, Image as ImageIcon, CheckSquare, Square,
   RotateCw, Trash2, Undo2, Redo2, Scissors,
-  Droplets, Hash, FileText, ChevronDown, ListFilter, Wand2,
+  Droplets, Hash, FileText, ListFilter, Wand2,
+  ArrowDownUp, SlidersHorizontal, Wrench, Files, FileDown,
 } from 'lucide-react';
 import { parseRanges } from '../lib/utils';
-import SortMenu from './SortMenu';
+import Menu from './Menu';
 
 export default function PdfActionToolbar({
   isDark,
@@ -31,6 +32,7 @@ export default function PdfActionToolbar({
   canUndo,
   canRedo,
   onExportPdf,
+  onExportSeparate,
   onExportImages,
   onSplit,
   onExportRange,
@@ -40,41 +42,41 @@ export default function PdfActionToolbar({
   onPageNumbers,
   onMetadata,
 }) {
-  const [toolsOpen, setToolsOpen] = useState(false);
   const [rangeInput, setRangeInput] = useState('');
-  const menuRef = useRef(null);
+  const noPages = isProcessing || pageCount === 0;
 
-  // Close menu on outside click
-  useEffect(() => {
-    const handler = (e) => {
-      if (menuRef.current && !menuRef.current.contains(e.target)) setToolsOpen(false);
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
+  const iconBtn = `p-2.5 rounded-xl transition-all disabled:opacity-30 disabled:cursor-not-allowed ${
+    isDark ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
+  }`;
+  const textBtn = `px-4 py-2.5 rounded-xl font-medium flex items-center gap-2 text-sm transition-all disabled:opacity-50 ${
+    isDark ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
+  }`;
+  const cta = isDark ? 'bg-white text-gray-900 hover:bg-gray-100' : 'bg-gray-900 text-white hover:bg-gray-800';
 
-  const iconBtn = (disabled = false) =>
-    `p-2.5 rounded-xl transition-all disabled:opacity-30 disabled:cursor-not-allowed ${
-      isDark ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
-    }${disabled ? '' : ''}`;
+  // Arrange ▾ — sort + bulk rotation.
+  const arrangeItems = [
+    ...(onSort ? sortOptions.map((opt) => ({ icon: ArrowDownUp, label: opt.label, onClick: () => onSort(opt.id) })) : []),
+    { divider: true },
+    { icon: RotateCw, label: 'Rotate all 90°', onClick: onRotateAll },
+    ...(onAutoRotate ? [{ icon: Wand2, label: 'Auto-rotate', onClick: onAutoRotate }] : []),
+  ];
 
-  const textBtn = (disabled = false) =>
-    `px-4 py-2.5 rounded-xl font-medium flex items-center gap-2 text-sm transition-all disabled:opacity-50 ${
-      isDark ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
-    }`;
+  // Tools ▾ — document-level operations that open a dialog or export.
+  const toolItems = [
+    { icon: Scissors, label: 'Split…', onClick: onSplit },
+    { icon: ListFilter, label: 'Export Range…', onClick: onExportRange },
+    { icon: ImageIcon, label: 'Export as Images (ZIP)', onClick: onExportImages },
+    { divider: true },
+    { icon: Droplets, label: 'Add Watermark…', onClick: onWatermark },
+    { icon: Hash, label: 'Add Page Numbers…', onClick: onPageNumbers },
+    { icon: FileText, label: 'Edit Metadata…', onClick: onMetadata },
+  ];
 
-  const menuItem = (Icon, label, handler) => (
-    <button
-      onClick={() => { setToolsOpen(false); handler?.(); }}
-      disabled={isProcessing || pageCount === 0}
-      className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-all disabled:opacity-40 ${
-        isDark ? 'hover:bg-gray-700 text-gray-200' : 'hover:bg-gray-100 text-gray-700'
-      }`}
-    >
-      <Icon className="w-4 h-4 shrink-0" />
-      {label}
-    </button>
-  );
+  // Save ▾ — combined PDF (default) vs one PDF per page.
+  const saveItems = [
+    { icon: FileDown, label: 'Save as PDF', onClick: onExportPdf },
+    { icon: Files, label: 'Save each page as separate PDF (ZIP)', onClick: onExportSeparate },
+  ];
 
   return (
     <div className="flex flex-col gap-4 mb-4 sm:mb-6">
@@ -91,11 +93,11 @@ export default function PdfActionToolbar({
         </div>
 
         <div className="flex flex-wrap gap-2 w-full sm:w-auto">
-          {/* Undo / Redo */}
-          <button onClick={onUndo} disabled={!canUndo} title="Undo (Ctrl+Z)" aria-label="Undo" className={iconBtn(!canUndo)}>
+          {/* History */}
+          <button onClick={onUndo} disabled={!canUndo} title="Undo (Ctrl+Z)" aria-label="Undo" className={iconBtn}>
             <Undo2 className="w-4 h-4" />
           </button>
-          <button onClick={onRedo} disabled={!canRedo} title="Redo (Ctrl+Shift+Z)" aria-label="Redo" className={iconBtn(!canRedo)}>
+          <button onClick={onRedo} disabled={!canRedo} title="Redo (Ctrl+Shift+Z)" aria-label="Redo" className={iconBtn}>
             <Redo2 className="w-4 h-4" />
           </button>
 
@@ -113,98 +115,40 @@ export default function PdfActionToolbar({
             <span className="hidden sm:inline">{isSelectionMode ? 'Cancel' : 'Select'}</span>
           </button>
 
-          {/* Sort */}
-          {onSort && (
-            <SortMenu
-              isDark={isDark}
-              options={sortOptions}
-              onSort={onSort}
-              disabled={isProcessing || pageCount === 0}
-            />
-          )}
+          {/* Arrange ▾ */}
+          <Menu isDark={isDark} label="Arrange" icon={SlidersHorizontal} items={arrangeItems} disabled={noPages} />
 
-          {/* Rotate All */}
-          <button onClick={onRotateAll} disabled={isProcessing || pageCount === 0}
-            title="Rotate all pages" aria-label="Rotate all pages" className={textBtn()}>
-            <RotateCw className="w-4 h-4" />
-            <span className="hidden sm:inline">Rotate all</span>
-          </button>
-
-          {/* Auto-rotate */}
-          {onAutoRotate && (
-            <button onClick={onAutoRotate} disabled={isProcessing || pageCount === 0}
-              title="Auto-rotate (detect & fix orientation)" aria-label="Auto-rotate all pages" className={textBtn()}>
-              <Wand2 className="w-4 h-4" />
-              <span className="hidden sm:inline">Auto-rotate</span>
-            </button>
-          )}
-
-          {/* Split */}
-          <button onClick={onSplit} disabled={isProcessing || pageCount === 0}
-            title="Split PDF" aria-label="Split PDF" className={textBtn()}>
-            <Scissors className="w-4 h-4" />
-            <span className="hidden sm:inline">Split</span>
-          </button>
-
-          {/* Export Images */}
-          <button onClick={onExportImages} disabled={isProcessing || pageCount === 0}
-            title="Export as images (ZIP)" aria-label="Export as images" className={textBtn()}>
-            <ImageIcon className="w-4 h-4" />
-            <span className="hidden sm:inline">Images</span>
-          </button>
-
-          {/* Tools dropdown */}
-          <div ref={menuRef} className="relative">
-            <button
-              onClick={() => setToolsOpen(!toolsOpen)}
-              disabled={isProcessing || pageCount === 0}
-              title="Document tools"
-              aria-label="Document tools"
-              aria-expanded={toolsOpen}
-              aria-haspopup="true"
-              className={`px-4 py-2.5 rounded-xl font-medium flex items-center gap-1.5 text-sm transition-all disabled:opacity-50 ${
-                toolsOpen
-                  ? isDark ? 'bg-gray-600 text-white' : 'bg-gray-300 text-gray-700'
-                  : isDark ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
-              }`}
-            >
-              <span className="hidden sm:inline">Tools</span>
-              <ChevronDown className={`w-3.5 h-3.5 transition-transform ${toolsOpen ? 'rotate-180' : ''}`} />
-            </button>
-
-            {toolsOpen && (
-              <div className={`absolute right-0 top-full mt-1.5 w-52 rounded-xl shadow-lg border z-20 py-1 ${
-                isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
-              }`}>
-                {menuItem(ListFilter, 'Export Range…',      onExportRange)}
-                {menuItem(Droplets,  'Add Watermark…',     onWatermark)}
-                {menuItem(Hash,      'Add Page Numbers…',  onPageNumbers)}
-                {menuItem(FileText,  'Edit Metadata…',     onMetadata)}
-              </div>
-            )}
-          </div>
+          {/* Tools ▾ */}
+          <Menu isDark={isDark} label="Tools" icon={Wrench} items={toolItems} disabled={noPages} />
 
           {/* Preview */}
-          <button onClick={onPreview} disabled={isProcessing || pageCount === 0}
-            title="Preview PDF" aria-label="Preview PDF" className={textBtn()}>
+          <button onClick={onPreview} disabled={noPages} title="Preview PDF" aria-label="Preview PDF" className={textBtn}>
             <Eye className="w-4 h-4" />
             <span className="hidden sm:inline">Preview</span>
           </button>
 
-          {/* Save as PDF */}
-          <button
-            onClick={onExportPdf}
-            disabled={isProcessing || pageCount === 0}
-            title="Save as PDF"
-            className={`flex-1 sm:flex-none px-6 py-2.5 rounded-xl font-medium
-                     disabled:opacity-50 disabled:cursor-not-allowed
-                     flex items-center justify-center gap-2
-                     active:scale-[0.98] transition-all text-sm
-                     ${isDark ? 'bg-white text-gray-900 hover:bg-gray-100' : 'bg-gray-900 text-white hover:bg-gray-800'}`}
-          >
-            <Download className="w-4 h-4" />
-            <span>Save as PDF</span>
-          </button>
+          {/* Save split-button */}
+          <div className="flex flex-1 sm:flex-none">
+            <button
+              onClick={onExportPdf}
+              disabled={noPages}
+              title="Save as PDF"
+              className={`flex-1 sm:flex-none px-5 py-2.5 rounded-l-xl font-medium flex items-center justify-center gap-2 text-sm
+                       active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed ${cta}`}
+            >
+              <Download className="w-4 h-4" />
+              <span>Save as PDF</span>
+            </button>
+            <Menu
+              isDark={isDark}
+              title="More save options"
+              items={saveItems}
+              disabled={noPages}
+              buttonClassName={`px-2 py-2.5 rounded-r-xl flex items-center transition-all disabled:opacity-50 border-l ${
+                isDark ? 'border-gray-300' : 'border-gray-700'
+              } ${cta}`}
+            />
+          </div>
         </div>
       </div>
 
@@ -276,6 +220,7 @@ export default function PdfActionToolbar({
           <button
             onClick={onExtractSelected}
             disabled={selectedCount === 0 || isProcessing}
+            title="Extract selected pages to one PDF"
             className={`px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-1.5 transition-all disabled:opacity-50 ${isDark ? 'bg-blue-600 hover:bg-blue-500 text-white' : 'bg-blue-600 hover:bg-blue-700 text-white shadow-sm'}`}
           >
             <Download className="w-4 h-4" /> Extract

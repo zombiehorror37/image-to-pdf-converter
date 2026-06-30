@@ -666,6 +666,41 @@ export default function PdfToolsMode({ isDark, isActive, onSwitchMode }) {
     }, { initialStep: 'Extracting pages...' });
   };
 
+  // Additive: one single-page PDF per page. Single page → that PDF; multiple →
+  // a ZIP. Reuses the same exportEditedPdf path as Save / Extract.
+  const exportSeparatePages = async () => {
+    if (pages.length === 0) return;
+    await op.run(async ({ signal, setStep, setProgress }) => {
+      try {
+        if (pages.length === 1) {
+          const blob = await exportEditedPdf(sourceDocsForExport, [pages[0]]);
+          if (signal.aborted) return;
+          downloadBlob(blob, `${filename}.pdf`);
+          pushToast({ type: 'success', message: `${filename}.pdf downloaded.` });
+          return;
+        }
+        const zip = new JSZip();
+        for (let i = 0; i < pages.length; i++) {
+          if (signal.aborted) return;
+          setStep(`Building PDF ${i + 1} of ${pages.length}...`);
+          setProgress(Math.round((i / pages.length) * 100));
+          const blob = await exportEditedPdf(sourceDocsForExport, [pages[i]]);
+          zip.file(`${filename}-page-${String(i + 1).padStart(3, '0')}.pdf`, blob);
+        }
+        if (signal.aborted) return;
+        setStep('Packaging ZIP...');
+        setProgress(98);
+        const zipBlob = await zip.generateAsync({ type: 'blob' });
+        downloadBlob(zipBlob, `${filename}-pages.zip`);
+        pushToast({ type: 'success', message: `${pages.length} pages exported as ${filename}-pages.zip.` });
+      } catch (err) {
+        if (!signal.aborted) {
+          pushToast({ type: 'error', title: 'Export failed', message: err?.message || 'Could not export pages.' });
+        }
+      }
+    }, { initialStep: 'Building PDFs...' });
+  };
+
   const exportImages = async () => {
     if (pages.length === 0) return;
     await op.run(async ({ signal, setStep, setProgress }) => {
@@ -881,6 +916,7 @@ export default function PdfToolsMode({ isDark, isActive, onSwitchMode }) {
             canUndo={canUndo}
             canRedo={canRedo}
             onExportPdf={exportPdf}
+            onExportSeparate={exportSeparatePages}
             onExportImages={exportImages}
             onSplit={() => setShowSplit(true)}
             onExportRange={() => setShowExportRange(true)}

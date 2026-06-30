@@ -24,8 +24,8 @@
 .DS_Store
 *.pem
 
-# self-hosted Tesseract OSD assets (regenerate with `npm run setup:ocr`)
-/public/tesseract/
+# Tesseract OSD assets are committed (served statically on Vercel). Regenerate
+# with `npm run setup:ocr` if upgrading tesseract.js / tesseract.js-core.
 
 # manual test fixtures (regenerate with `node scripts/make-test-pdfs.mjs`)
 /test-fixtures/

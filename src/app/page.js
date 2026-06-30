@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import Header from './components/Header';
+import DocsMode from './components/DocsMode';
 
 const ConvertMode = dynamic(() => import('./components/ConvertMode'), { ssr: false });
 const PdfToolsMode = dynamic(() => import('./components/PdfToolsMode'), { ssr: false });
@@ -76,6 +77,14 @@ export default function App() {
             className={mode !== 'compress' ? 'hidden' : ''}
           >
             <CompressMode isDark={isDark} isActive={mode === 'compress'} onSwitchMode={setMode} />
+          </div>
+          <div
+            role="tabpanel"
+            id="panel-docs"
+            aria-labelledby="tab-docs"
+            className={mode !== 'docs' ? 'hidden' : ''}
+          >
+            <DocsMode isDark={isDark} onSwitchMode={setMode} />
           </div>
 
           <footer className={`mt-8 sm:mt-12 text-center text-xs sm:text-sm ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>

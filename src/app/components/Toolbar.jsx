@@ -1,6 +1,9 @@
 'use client';
-import { Download, Eye, CheckSquare, Square, RotateCw, Trash2, Undo2, Redo2, Wand2 } from 'lucide-react';
-import SortMenu from './SortMenu';
+import {
+  Download, Eye, CheckSquare, Square, RotateCw, Trash2, Undo2, Redo2,
+  Wand2, ArrowDownUp, SlidersHorizontal, Files, FileDown,
+} from 'lucide-react';
+import Menu from './Menu';
 
 export default function Toolbar({
   isDark,
@@ -12,6 +15,8 @@ export default function Toolbar({
   onSelectAll,
   onPreview,
   onConvert,
+  onExportSeparate,
+  onExtractSelected,
   onRotateSelected,
   onRotateAll,
   onDeleteSelected,
@@ -25,6 +30,30 @@ export default function Toolbar({
   onAutoRotate,
   onAutoRotateSelected,
 }) {
+  const noImages = isProcessing || imageCount === 0;
+
+  const iconBtn = `p-2.5 rounded-xl transition-all disabled:opacity-30 disabled:cursor-not-allowed ${
+    isDark ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
+  }`;
+  const textBtn = `px-4 py-2.5 rounded-xl font-medium flex items-center gap-2 text-sm transition-all disabled:opacity-50 ${
+    isDark ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
+  }`;
+  const cta = isDark ? 'bg-white text-gray-900 hover:bg-gray-100' : 'bg-gray-900 text-white hover:bg-gray-800';
+
+  // Arrange ▾ — sort + bulk rotation, the "organize the whole set" actions.
+  const arrangeItems = [
+    ...(onSort ? sortOptions.map((opt) => ({ icon: ArrowDownUp, label: opt.label, onClick: () => onSort(opt.id) })) : []),
+    { divider: true },
+    { icon: RotateCw, label: 'Rotate all 90°', onClick: onRotateAll },
+    ...(onAutoRotate ? [{ icon: Wand2, label: 'Auto-rotate', onClick: onAutoRotate }] : []),
+  ];
+
+  // Save ▾ — combined PDF (default) vs one PDF per image.
+  const saveItems = [
+    { icon: FileDown, label: 'Save as one PDF', onClick: onConvert },
+    { icon: Files, label: 'Save each image as separate PDF (ZIP)', onClick: onExportSeparate },
+  ];
+
   return (
     <div className="flex flex-col gap-4 mb-4 sm:mb-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -38,104 +67,61 @@ export default function Toolbar({
             Page order reflects PDF order
           </p>
         </div>
+
         <div className="flex flex-wrap gap-2 w-full sm:w-auto">
-          <button
-            onClick={onUndo}
-            disabled={!canUndo}
-            title="Undo (Ctrl+Z)"
-            aria-label="Undo"
-            className={`p-2.5 rounded-xl transition-all disabled:opacity-30 disabled:cursor-not-allowed ${
-              isDark ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
-            }`}
-          >
+          {/* History */}
+          <button onClick={onUndo} disabled={!canUndo} title="Undo (Ctrl+Z)" aria-label="Undo" className={iconBtn}>
             <Undo2 className="w-4 h-4" />
           </button>
-          <button
-            onClick={onRedo}
-            disabled={!canRedo}
-            title="Redo (Ctrl+Shift+Z)"
-            aria-label="Redo"
-            className={`p-2.5 rounded-xl transition-all disabled:opacity-30 disabled:cursor-not-allowed ${
-              isDark ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
-            }`}
-          >
+          <button onClick={onRedo} disabled={!canRedo} title="Redo (Ctrl+Shift+Z)" aria-label="Redo" className={iconBtn}>
             <Redo2 className="w-4 h-4" />
           </button>
+
+          {/* Select */}
           <button
             onClick={onToggleSelectionMode}
             aria-label={isSelectionMode ? 'Cancel selection' : 'Select images'}
             className={`px-4 py-2.5 rounded-xl font-medium flex items-center gap-2 text-sm transition-all ${
               isSelectionMode
                 ? 'bg-blue-500 text-white'
-                : isDark
-                  ? 'bg-gray-700 hover:bg-gray-600 text-white'
-                  : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
+                : isDark ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
             }`}
           >
             <CheckSquare className="w-4 h-4" />
             <span className="hidden sm:inline">{isSelectionMode ? 'Cancel' : 'Select'}</span>
           </button>
-          {onSort && (
-            <SortMenu
-              isDark={isDark}
-              options={sortOptions}
-              onSort={onSort}
-              disabled={isProcessing || imageCount === 0}
-            />
-          )}
-          <button
-            onClick={onRotateAll}
-            disabled={isProcessing || imageCount === 0}
-            title="Rotate all images"
-            aria-label="Rotate all images"
-            className={`px-4 py-2.5 rounded-xl font-medium flex items-center gap-2 text-sm transition-all disabled:opacity-50 ${
-              isDark ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
-            }`}
-          >
-            <RotateCw className="w-4 h-4" />
-            <span className="hidden sm:inline">Rotate all</span>
-          </button>
-          {onAutoRotate && (
-            <button
-              onClick={onAutoRotate}
-              disabled={isProcessing || imageCount === 0}
-              title="Auto-rotate (detect & fix orientation)"
-              aria-label="Auto-rotate all images"
-              className={`px-4 py-2.5 rounded-xl font-medium flex items-center gap-2 text-sm transition-all disabled:opacity-50 ${
-                isDark ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
-              }`}
-            >
-              <Wand2 className="w-4 h-4" />
-              <span className="hidden sm:inline">Auto-rotate</span>
-            </button>
-          )}
-          <button
-            onClick={onPreview}
-            disabled={isProcessing}
-            title="Preview PDF"
-            aria-label="Preview PDF"
-            className={`px-4 py-2.5 rounded-xl font-medium flex items-center gap-2 text-sm transition-all disabled:opacity-50 ${
-              isDark
-                ? 'bg-gray-700 hover:bg-gray-600 text-white'
-                : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
-            }`}
-          >
+
+          {/* Arrange ▾ */}
+          <Menu isDark={isDark} label="Arrange" icon={SlidersHorizontal} items={arrangeItems} disabled={noImages} />
+
+          {/* Preview */}
+          <button onClick={onPreview} disabled={isProcessing} title="Preview PDF" aria-label="Preview PDF" className={textBtn}>
             <Eye className="w-4 h-4" />
             <span className="hidden sm:inline">Preview</span>
           </button>
-          <button
-            onClick={onConvert}
-            disabled={isProcessing}
-            title="Save as PDF"
-            className={`flex-1 sm:flex-none px-6 py-2.5 rounded-xl font-medium
-                     disabled:opacity-50 disabled:cursor-not-allowed
-                     flex items-center justify-center gap-2
-                     active:scale-[0.98] transition-all text-sm
-                     ${isDark ? 'bg-white text-gray-900 hover:bg-gray-100' : 'bg-gray-900 text-white hover:bg-gray-800'}`}
-          >
-            <Download className="w-4 h-4" />
-            <span>Save as PDF</span>
-          </button>
+
+          {/* Save split-button: primary = combined PDF, caret = more options */}
+          <div className="flex flex-1 sm:flex-none">
+            <button
+              onClick={onConvert}
+              disabled={isProcessing}
+              title="Save as PDF"
+              className={`flex-1 sm:flex-none px-5 py-2.5 rounded-l-xl font-medium flex items-center justify-center gap-2 text-sm
+                       active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed ${cta}`}
+            >
+              <Download className="w-4 h-4" />
+              <span>Save as PDF</span>
+            </button>
+            <Menu
+              isDark={isDark}
+              title="More save options"
+              items={saveItems}
+              disabled={isProcessing}
+              buttonClassName={`px-2 py-2.5 rounded-r-xl flex items-center transition-all disabled:opacity-50 border-l ${
+                isDark ? 'border-gray-300' : 'border-gray-700'
+              } ${cta}`}
+            />
+          </div>
         </div>
       </div>
 
@@ -172,13 +158,25 @@ export default function Toolbar({
           {onAutoRotateSelected && (
             <button
               onClick={onAutoRotateSelected}
-              disabled={selectedCount === 0}
+              disabled={selectedCount === 0 || isProcessing}
               title="Auto-rotate selected"
               className={`px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-1.5 transition-all disabled:opacity-50 ${
                 isDark ? 'bg-gray-700 hover:bg-gray-600' : 'bg-white hover:bg-gray-50 shadow-sm'
               }`}
             >
               <Wand2 className="w-4 h-4" /> Auto-rotate
+            </button>
+          )}
+          {onExtractSelected && (
+            <button
+              onClick={onExtractSelected}
+              disabled={selectedCount === 0 || isProcessing}
+              title="Export selected as separate PDFs"
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-1.5 transition-all disabled:opacity-50 ${
+                isDark ? 'bg-blue-600 hover:bg-blue-500 text-white' : 'bg-blue-600 hover:bg-blue-700 text-white shadow-sm'
+              }`}
+            >
+              <Download className="w-4 h-4" /> Extract
             </button>
           )}
           <button

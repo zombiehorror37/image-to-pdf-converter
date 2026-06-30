@@ -12,7 +12,7 @@ import Toasts from './Toasts';
 import SessionRestoreBanner from './SessionRestoreBanner';
 import { isImageFile, getImageMimeType, naturalSort } from '../lib/utils';
 import { createImageObject } from '../lib/imageProcessing';
-import { CancelledError, generatePDFInWorker } from '../lib/pdfGeneratorWorker';
+import { CancelledError, generatePDFInWorker, generateSeparatePDFsInWorker } from '../lib/pdfGeneratorWorker';
 import { detectCorrection, imageToDetectionCanvas } from '../lib/autoRotate';
 import { useHistory } from '../hooks/useHistory';
 import { useToasts } from '../hooks/useToasts';
@@ -40,6 +40,36 @@ const SORT_OPTIONS = [
   { id: 'size-asc', label: 'Size (small → large)' },
   { id: 'size-desc', label: 'Size (large → small)' },
 ];
+
+const downloadBlob = (blob, name) => {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+};
+
+// image filename → safe PDF basename (no extension, no path, no illegal chars).
+const pdfBaseName = (name, index) => {
+  const base = (name || '')
+    .replace(/^.*[\\/]/, '')   // drop any path
+    .replace(/\.[^.]+$/, '')   // drop extension
+    .replace(/[\\/:*?"<>|]+/g, '_')
+    .trim();
+  return base || `page-${String(index + 1).padStart(3, '0')}`;
+};
+
+// Reserve a case-insensitively unique `${base}.pdf`, suffixing -2, -3, … on clash.
+const uniquePdfName = (used, base) => {
+  let name = `${base}.pdf`;
+  let n = 2;
+  while (used.has(name.toLowerCase())) name = `${base}-${n++}.pdf`;
+  used.add(name.toLowerCase());
+  return name;
+};
 
 // Run `fn` over `items` with at most `limit` operations in flight.
 // Preserves index order in the returned array.
@@ -416,6 +446,55 @@ export default function ConvertMode({ isDark, isActive, onSwitchMode }) {
     }
   };
 
+  // Additive export: one single-page PDF per image (selected ones if `ids` is
+  // given, otherwise all). Single image → that PDF; multiple → a ZIP. The
+  // combined "Save as PDF" (runGeneration) is unaffected.
+  const exportSeparatePdfs = async (ids) => {
+    const targets = ids ? images.filter((img) => ids.has(img.id)) : images;
+    if (targets.length === 0) return;
+    const safeBase = filename.trim() || 'converted-images';
+
+    await op.run(async ({ signal, setStep, setProgress }) => {
+      setStep('Generating PDFs...');
+      let blobs;
+      try {
+        blobs = await generateSeparatePDFsInWorker(
+          targets,
+          pdfSettings,
+          (p) => setProgress(p),
+          (s) => setStep(s),
+          signal,
+        );
+      } catch (err) {
+        if (err instanceof CancelledError) {
+          pushToast({ type: 'info', message: 'Export cancelled.' });
+        } else {
+          pushToast({ type: 'error', title: 'Export failed', message: err?.message || 'An unknown error occurred.' });
+        }
+        return;
+      }
+      if (!blobs || blobs.length === 0 || signal.aborted) return;
+
+      if (blobs.length === 1) {
+        const name = `${pdfBaseName(targets[0].name, 0)}.pdf`;
+        downloadBlob(blobs[0], name);
+        pushToast({ type: 'success', message: `${name} downloaded.` });
+        return;
+      }
+
+      setStep('Packaging ZIP...');
+      setProgress(98);
+      const zip = new JSZip();
+      const used = new Set();
+      blobs.forEach((blob, i) => {
+        zip.file(uniquePdfName(used, pdfBaseName(targets[i].name, i)), blob);
+      });
+      const zipBlob = await zip.generateAsync({ type: 'blob' });
+      downloadBlob(zipBlob, `${safeBase}-pages.zip`);
+      pushToast({ type: 'success', message: `${blobs.length} PDFs downloaded as ${safeBase}-pages.zip.` });
+    });
+  };
+
   const closePreview = () => {
     if (previewPdfUrl) URL.revokeObjectURL(previewPdfUrl);
     previewPdfUrlRef.current = null;
@@ -495,6 +574,8 @@ export default function ConvertMode({ isDark, isActive, onSwitchMode }) {
             onAutoRotateSelected={() => autoRotateImages(selectedImages)}
             onPreview={() => runGeneration(true)}
             onConvert={() => runGeneration(false)}
+            onExportSeparate={() => exportSeparatePdfs()}
+            onExtractSelected={() => exportSeparatePdfs(selectedImages)}
             onRotateSelected={rotateSelected}
             onRotateAll={rotateAll}
             onDeleteSelected={deleteSelected}
