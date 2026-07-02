@@ -33,7 +33,11 @@ export const loadPdfDocument = async (source) => {
   } else {
     throw new Error('Unsupported PDF source');
   }
-  const task = pdfjs.getDocument({ data });
+  // wasmUrl points at self-hosted copies of pdfjs-dist/wasm (see
+  // scripts/setup-pdfjs-wasm.mjs). pdf.js ≥5.7 needs these to decode
+  // JBIG2/CCITT, JPEG2000 and ICC profiles; without the option it fails
+  // silently and scanned pages lose their (JBIG2) text layer entirely.
+  const task = pdfjs.getDocument({ data, wasmUrl: '/pdfjs/' });
   return task.promise;
 };
 

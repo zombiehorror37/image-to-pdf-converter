@@ -7,7 +7,9 @@
     "build": "next build --turbopack",
     "start": "next start",
     "lint": "eslint",
-    "setup:ocr": "node scripts/setup-tesseract.mjs"
+    "setup:ocr": "node scripts/setup-tesseract.mjs",
+    "setup:pdfjs": "node scripts/setup-pdfjs-wasm.mjs",
+    "postinstall": "node scripts/setup-pdfjs-wasm.mjs"
   },
   "dependencies": {
     "@cantoo/pdf-lib": "^2.7.1",
