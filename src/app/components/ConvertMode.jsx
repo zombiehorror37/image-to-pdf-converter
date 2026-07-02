@@ -528,6 +528,7 @@ export default function ConvertMode({ isDark, isActive, onSwitchMode }) {
       <UploadDropzone
         isDark={isDark}
         mode="convert"
+        isActive={isActive}
         onDrop={handleFileUpload}
         onFiles={handleFileUpload}
         inputId="fileInput"

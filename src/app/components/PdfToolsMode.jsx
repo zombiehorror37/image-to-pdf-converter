@@ -917,6 +917,7 @@ export default function PdfToolsMode({ isDark, isActive, onSwitchMode }) {
       <UploadDropzone
         isDark={isDark}
         mode="pdfTools"
+        isActive={isActive}
         onDrop={handleFileUpload}
         onFiles={handleFileUpload}
         inputId="pdfFileInput"

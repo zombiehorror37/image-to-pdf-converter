@@ -1,7 +1,8 @@
 'use client';
-import { FileImage, Archive, Clipboard, FileText } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { FileImage, Archive, Clipboard, FileText, Download } from 'lucide-react';
 
-export default function UploadDropzone({ isDark, mode, onDrop, onFiles, inputId = 'fileInput' }) {
+export default function UploadDropzone({ isDark, mode, isActive = true, onDrop, onFiles, inputId = 'fileInput' }) {
   const isPdfMode = mode === 'pdfTools';
   const isCompressMode = mode === 'compress';
   const accept = isCompressMode
@@ -9,6 +10,50 @@ export default function UploadDropzone({ isDark, mode, onDrop, onFiles, inputId 
     : isPdfMode
       ? 'application/pdf,.pdf'
       : 'image/*,.zip,.heic,.heif,.tif,.tiff,.avif';
+
+  // Fullscreen catch-all: while a file drag is anywhere over the window, a
+  // whole-viewport overlay takes the drop so the user doesn't have to aim for
+  // this dropzone. Gated on isActive so only the visible mode reacts (all
+  // modes stay mounted). dragenter/dragleave fire for every element crossed,
+  // so a depth counter tracks when the drag truly leaves the window.
+  const [isWindowDrag, setIsWindowDrag] = useState(false);
+  const dragDepthRef = useRef(0);
+  useEffect(() => {
+    if (!isActive) return undefined;
+    const hasFiles = (e) => Array.from(e.dataTransfer?.types || []).includes('Files');
+    const reset = () => {
+      dragDepthRef.current = 0;
+      setIsWindowDrag(false);
+    };
+    const onWinDragEnter = (e) => {
+      if (!hasFiles(e)) return;
+      dragDepthRef.current++;
+      setIsWindowDrag(true);
+    };
+    const onWinDragLeave = () => {
+      if (--dragDepthRef.current <= 0) reset();
+    };
+    // Prevent the browser's default "navigate to file" for drops the overlay
+    // didn't catch, and clean up when the drag ends or drops anywhere.
+    const onWinDragOver = (e) => e.preventDefault();
+    const onWinDrop = (e) => {
+      e.preventDefault();
+      reset();
+    };
+    window.addEventListener('dragenter', onWinDragEnter);
+    window.addEventListener('dragleave', onWinDragLeave);
+    window.addEventListener('dragover', onWinDragOver);
+    window.addEventListener('drop', onWinDrop);
+    window.addEventListener('dragend', reset);
+    return () => {
+      window.removeEventListener('dragenter', onWinDragEnter);
+      window.removeEventListener('dragleave', onWinDragLeave);
+      window.removeEventListener('dragover', onWinDragOver);
+      window.removeEventListener('drop', onWinDrop);
+      window.removeEventListener('dragend', reset);
+      reset();
+    };
+  }, [isActive]);
 
   const onDragOver = (e) => e.preventDefault();
   const handleDrop = (e) => {
@@ -29,7 +74,36 @@ export default function UploadDropzone({ isDark, mode, onDrop, onFiles, inputId 
     }
   };
 
+  const dropTitle = isCompressMode
+    ? 'Drop PDFs or a ZIP of PDFs here'
+    : isPdfMode
+      ? 'Drop PDF files here'
+      : 'Drop images or ZIP files here';
+
   return (
+    <>
+    {isWindowDrag && (
+      <div
+        onDragOver={onDragOver}
+        onDrop={handleDrop}
+        className={`fixed inset-0 z-[200] flex items-center justify-center p-4 sm:p-8 backdrop-blur-sm ${
+          isDark ? 'bg-gray-900/80' : 'bg-white/80'
+        }`}
+      >
+        <div className={`w-full h-full rounded-3xl border-4 border-dashed border-blue-500 flex flex-col
+                        items-center justify-center gap-4 pointer-events-none ${
+          isDark ? 'bg-blue-500/10' : 'bg-blue-50/60'
+        }`}>
+          <div className={`p-5 rounded-3xl ${isDark ? 'bg-blue-500/20' : 'bg-blue-100'}`}>
+            <Download className="w-12 h-12 sm:w-16 sm:h-16 text-blue-500" />
+          </div>
+          <p className="text-xl sm:text-3xl font-semibold">{dropTitle}</p>
+          <p className={`text-sm sm:text-base ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+            Release anywhere to add your files
+          </p>
+        </div>
+      </div>
+    )}
     <div
       role="button"
       tabIndex={0}
@@ -87,13 +161,7 @@ export default function UploadDropzone({ isDark, mode, onDrop, onFiles, inputId 
           )}
         </div>
         <div>
-          <p className="text-lg sm:text-xl font-medium mb-1">
-            {isCompressMode
-              ? 'Drop PDFs or a ZIP of PDFs here'
-              : isPdfMode
-                ? 'Drop PDF files here'
-                : 'Drop images or ZIP files here'}
-          </p>
+          <p className="text-lg sm:text-xl font-medium mb-1">{dropTitle}</p>
           <p className={`text-sm sm:text-base ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
             {isPdfMode || isCompressMode
               ? 'or tap to browse'
@@ -119,5 +187,6 @@ export default function UploadDropzone({ isDark, mode, onDrop, onFiles, inputId 
         tabIndex={-1}
       />
     </div>
+    </>
   );
 }

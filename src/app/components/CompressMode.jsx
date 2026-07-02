@@ -276,6 +276,7 @@ export default function CompressMode({ isDark, isActive, onSwitchMode }) {
       <UploadDropzone
         isDark={isDark}
         mode="compress"
+        isActive={isActive}
         onDrop={addFiles}
         onFiles={addFiles}
         inputId="compressFileInput"
