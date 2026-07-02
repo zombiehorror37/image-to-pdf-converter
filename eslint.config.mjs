@@ -18,6 +18,9 @@ const eslintConfig = [
       "out/**",
       "build/**",
       "next-env.d.ts",
+      // vendored static assets (pdf.js wasm fallbacks, tesseract worker)
+      "public/pdfjs/**",
+      "public/tesseract/**",
     ],
   },
 ];

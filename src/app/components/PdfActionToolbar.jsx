@@ -5,6 +5,7 @@ import {
   RotateCw, Trash2, Undo2, Redo2, Scissors,
   Droplets, Hash, FileText, ListFilter, Wand2,
   ArrowDownUp, SlidersHorizontal, Wrench, Files, FileDown,
+  Search, Repeat2,
 } from 'lucide-react';
 import { parseRanges } from '../lib/utils';
 import Menu from './Menu';
@@ -27,6 +28,8 @@ export default function PdfActionToolbar({
   onDeleteSelected,
   onExtractSelected,
   onSelectRange,
+  onSelectByText,
+  onInvertSelection,
   onUndo,
   onRedo,
   canUndo,
@@ -43,6 +46,7 @@ export default function PdfActionToolbar({
   onMetadata,
 }) {
   const [rangeInput, setRangeInput] = useState('');
+  const [findInput, setFindInput] = useState('');
   const noPages = isProcessing || pageCount === 0;
 
   const iconBtn = `p-2.5 rounded-xl transition-all disabled:opacity-30 disabled:cursor-not-allowed ${
@@ -161,6 +165,15 @@ export default function PdfActionToolbar({
           >
             {allSelected ? <><CheckSquare className="w-4 h-4" /> Deselect All</> : <><Square className="w-4 h-4" /> Select All</>}
           </button>
+          {onInvertSelection && (
+            <button
+              onClick={onInvertSelection}
+              title="Invert selection"
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-1.5 transition-all ${isDark ? 'bg-gray-700 hover:bg-gray-600' : 'bg-white hover:bg-gray-50 shadow-sm'}`}
+            >
+              <Repeat2 className="w-4 h-4" /> Invert
+            </button>
+          )}
           <span className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
             {selectedCount} selected
           </span>
@@ -192,6 +205,38 @@ export default function PdfActionToolbar({
               Select
             </button>
           </form>
+          {onSelectByText && (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (findInput.trim()) onSelectByText(findInput);
+              }}
+              className="flex items-center gap-1"
+              title="Select every page whose text contains this — then delete, extract, or invert"
+            >
+              <input
+                type="text"
+                value={findInput}
+                onChange={(e) => setFindInput(e.target.value)}
+                placeholder="Find text…"
+                disabled={isProcessing}
+                className={`px-2.5 py-1.5 rounded-lg text-sm border outline-none w-36 transition-all ${
+                  isDark
+                    ? 'bg-gray-700 border-gray-600 focus:border-blue-500 text-white placeholder-gray-500'
+                    : 'bg-white border-gray-300 focus:border-blue-500 placeholder-gray-400'
+                }`}
+              />
+              <button
+                type="submit"
+                disabled={isProcessing || !findInput.trim()}
+                className={`px-2.5 py-1.5 rounded-lg text-sm font-medium flex items-center gap-1.5 transition-all disabled:opacity-50 ${
+                  isDark ? 'bg-gray-700 hover:bg-gray-600' : 'bg-white hover:bg-gray-50 shadow-sm'
+                }`}
+              >
+                <Search className="w-4 h-4" /> Find
+              </button>
+            </form>
+          )}
           <div className="flex-1" />
           <button
             onClick={onRotateSelected}

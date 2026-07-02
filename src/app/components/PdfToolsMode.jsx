@@ -17,6 +17,7 @@ import WatermarkDialog from './WatermarkDialog';
 import PageNumbersDialog from './PageNumbersDialog';
 import MetadataDialog from './MetadataDialog';
 import { loadPdfDocument, renderPageToCanvas, canvasToBlobUrl } from '../lib/pdfRender';
+import { getPageTextCached, normalizeQuery } from '../lib/pdfSearch';
 import { detectCorrection } from '../lib/autoRotate';
 import { exportEditedPdf, applyWatermark, applyPageNumbers, updateMetadata } from '../lib/pdfTools';
 import { useHistory } from '../hooks/useHistory';
@@ -532,6 +533,56 @@ export default function PdfToolsMode({ isDark, isActive, onSwitchMode }) {
     setIsSelectionMode(false);
   };
 
+  const invertSelection = () => {
+    setSelectedPages((prev) => new Set(pages.filter((p) => !prev.has(p.id)).map((p) => p.id)));
+  };
+
+  // Select every page whose text contains the query (case-insensitive), so the
+  // usual bulk actions (delete / extract / rotate) apply to them. Pages without
+  // a text layer (scans with no OCR) can't match and are reported separately.
+  const selectPagesByText = async (query) => {
+    const q = normalizeQuery(query);
+    if (!q || pages.length === 0) return;
+
+    const matched = new Set();
+    let noText = 0;
+    let cancelled = false;
+
+    await op.run(async ({ signal, setStep, setProgress }) => {
+      for (let i = 0; i < pages.length; i++) {
+        if (signal.aborted) { cancelled = true; return; }
+        setStep(`Searching page ${i + 1} of ${pages.length}…`);
+        const page = pages[i];
+        const doc = docsRef.current.get(page.srcDocId);
+        if (!doc) { noText++; continue; }
+        try {
+          const text = await getPageTextCached(doc.pdfDoc, page.srcPageIndex + 1);
+          if (!text) noText++;
+          else if (text.includes(q)) matched.add(page.id);
+        } catch {
+          noText++;
+        }
+        setProgress(Math.round(((i + 1) / pages.length) * 100));
+      }
+    }, { initialStep: 'Searching…' });
+
+    if (cancelled) {
+      pushToast({ type: 'info', message: 'Search cancelled' });
+      return;
+    }
+
+    setSelectedPages(matched);
+    if (!isSelectionMode) setIsSelectionMode(true);
+
+    if (noText === pages.length) {
+      pushToast({ type: 'error', message: 'No selectable text in this PDF — it may be a scan without OCR' });
+    } else {
+      const parts = [`“${query.trim()}” found on ${matched.size} of ${pages.length} pages`];
+      if (noText) parts.push(`${noText} without text`);
+      pushToast({ type: matched.size > 0 ? 'success' : 'info', message: parts.join(' · ') });
+    }
+  };
+
   // Select pages by 1-based range pairs [[s,e], ...]
   const selectPagesByRange = (ranges) => {
     const ids = new Set();
@@ -911,6 +962,8 @@ export default function PdfToolsMode({ isDark, isActive, onSwitchMode }) {
             onDeleteSelected={deleteSelected}
             onExtractSelected={extractSelected}
             onSelectRange={selectPagesByRange}
+            onSelectByText={selectPagesByText}
+            onInvertSelection={invertSelection}
             onUndo={undo}
             onRedo={redo}
             canUndo={canUndo}
