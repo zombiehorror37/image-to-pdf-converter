@@ -247,8 +247,13 @@ export default function ConvertMode({ isDark, isActive, onSwitchMode }) {
             duration: 9000,
           });
         }
-        if (newImages.length > 0 && failures.length === 0) {
-          pushToast({ type: 'success', message: `Added ${newImages.length} ${newImages.length === 1 ? 'image' : 'images'}.` });
+        if (newImages.length > 0) {
+          pushToast({
+            type: 'success',
+            message: failures.length > 0
+              ? `Added ${newImages.length} of ${newImages.length + failures.length} files.`
+              : `Added ${newImages.length} ${newImages.length === 1 ? 'image' : 'images'}.`,
+          });
         }
       });
     },
@@ -344,6 +349,9 @@ export default function ConvertMode({ isDark, isActive, onSwitchMode }) {
         try {
           const canvas = await imageToDetectionCanvas(img.preview);
           const { correction, certain } = await detectCorrection(canvas);
+          // Free the detection canvas right away, as in autoRotatePages.
+          canvas.width = 0;
+          canvas.height = 0;
           if (!certain) uncertain++;
           else if (correction === 0) upright++;
           else corrections.set(img.id, correction);
@@ -429,6 +437,7 @@ export default function ConvertMode({ isDark, isActive, onSwitchMode }) {
     if (!result) return;
     if (forPreview) {
       const url = URL.createObjectURL(result);
+      if (previewPdfUrlRef.current) URL.revokeObjectURL(previewPdfUrlRef.current);
       previewPdfUrlRef.current = url;
       setPreviewPdfUrl(url);
       setShowPreview(true);

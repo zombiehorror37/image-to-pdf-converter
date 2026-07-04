@@ -45,20 +45,50 @@ const norm = (deg) => (((deg % 360) + 360) % 360);
 // alone (see naptha/tesseract.js#859).
 const correctionFor = (deg) => norm(deg);
 
+// The idle worker holds ~30MB, so it's torn down after a minute without
+// detections; the next detectCorrection re-creates it (assets come back from
+// the browser cache in a second or two). The in-flight counter keeps the
+// timer from firing while overlapping detections are still running.
+const IDLE_TIMEOUT_MS = 60_000;
+let idleTimer = null;
+let activeDetections = 0;
+
+const clearIdleTimer = () => {
+  if (idleTimer) {
+    clearTimeout(idleTimer);
+    idleTimer = null;
+  }
+};
+
+const scheduleIdleTermination = () => {
+  clearIdleTimer();
+  idleTimer = setTimeout(() => {
+    idleTimer = null;
+    terminateAutoRotate();
+  }, IDLE_TIMEOUT_MS);
+};
+
 // Detect the correction for one image-like input (canvas / dataURL / image).
 // Returns the clockwise degrees to rotate it upright, plus whether we're
 // confident enough to act on it.
 export const detectCorrection = async (imageLike) => {
-  const worker = await loadWorker();
-  const { data } = await worker.detect(imageLike);
-  const raw = norm(data?.orientation_degrees || 0);
-  const confidence = data?.orientation_confidence ?? 0;
-  return {
-    correction: correctionFor(raw),
-    confidence,
-    certain: confidence >= CONFIDENCE_MIN,
-    raw,
-  };
+  clearIdleTimer();
+  activeDetections++;
+  try {
+    const worker = await loadWorker();
+    const { data } = await worker.detect(imageLike);
+    const raw = norm(data?.orientation_degrees || 0);
+    const confidence = data?.orientation_confidence ?? 0;
+    return {
+      correction: correctionFor(raw),
+      confidence,
+      certain: confidence >= CONFIDENCE_MIN,
+      raw,
+    };
+  } finally {
+    activeDetections--;
+    if (activeDetections === 0) scheduleIdleTermination();
+  }
 };
 
 // Draw an image source (dataURL / URL) onto a width-capped white canvas for
@@ -84,6 +114,7 @@ export const imageToDetectionCanvas = (src, maxWidth = 1200) =>
   });
 
 export const terminateAutoRotate = async () => {
+  clearIdleTimer();
   if (!workerPromise) return;
   try {
     const w = await workerPromise;

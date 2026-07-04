@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import Header from './components/Header';
 import DocsMode from './components/DocsMode';
+import ErrorBoundary from './components/ErrorBoundary';
 
 const ConvertMode = dynamic(() => import('./components/ConvertMode'), { ssr: false });
 const PdfToolsMode = dynamic(() => import('./components/PdfToolsMode'), { ssr: false });
@@ -60,7 +61,9 @@ export default function App() {
             aria-labelledby="tab-convert"
             className={mode !== 'convert' ? 'hidden' : ''}
           >
-            <ConvertMode isDark={isDark} isActive={mode === 'convert'} onSwitchMode={setMode} />
+            <ErrorBoundary isDark={isDark}>
+              <ConvertMode isDark={isDark} isActive={mode === 'convert'} onSwitchMode={setMode} />
+            </ErrorBoundary>
           </div>
           <div
             role="tabpanel"
@@ -68,7 +71,9 @@ export default function App() {
             aria-labelledby="tab-pdfTools"
             className={mode !== 'pdfTools' ? 'hidden' : ''}
           >
-            <PdfToolsMode isDark={isDark} isActive={mode === 'pdfTools'} onSwitchMode={setMode} />
+            <ErrorBoundary isDark={isDark}>
+              <PdfToolsMode isDark={isDark} isActive={mode === 'pdfTools'} onSwitchMode={setMode} />
+            </ErrorBoundary>
           </div>
           <div
             role="tabpanel"
@@ -76,7 +81,9 @@ export default function App() {
             aria-labelledby="tab-compress"
             className={mode !== 'compress' ? 'hidden' : ''}
           >
-            <CompressMode isDark={isDark} isActive={mode === 'compress'} onSwitchMode={setMode} />
+            <ErrorBoundary isDark={isDark}>
+              <CompressMode isDark={isDark} isActive={mode === 'compress'} onSwitchMode={setMode} />
+            </ErrorBoundary>
           </div>
           <div
             role="tabpanel"
@@ -84,7 +91,9 @@ export default function App() {
             aria-labelledby="tab-docs"
             className={mode !== 'docs' ? 'hidden' : ''}
           >
-            <DocsMode isDark={isDark} onSwitchMode={setMode} />
+            <ErrorBoundary isDark={isDark}>
+              <DocsMode isDark={isDark} onSwitchMode={setMode} />
+            </ErrorBoundary>
           </div>
 
           <footer className={`mt-8 sm:mt-12 text-center text-xs sm:text-sm ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>

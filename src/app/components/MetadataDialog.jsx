@@ -12,16 +12,17 @@ export default function MetadataDialog({ isDark, pdfBlob, onClose, onApply }) {
   useEffect(() => {
     if (!pdfBlob) return;
     let cancelled = false;
-    import('../lib/pdfTools').then(({ readMetadata }) =>
-      readMetadata(pdfBlob).then(meta => {
+    import('../lib/pdfTools')
+      .then(({ readMetadata }) => readMetadata(pdfBlob))
+      .then(meta => {
         if (cancelled) return;
         setTitle(meta.title || '');
         setAuthor(meta.author || '');
         setSubject(meta.subject || '');
         setKeywords(meta.keywords || '');
-        setLoading(false);
-      }).catch(() => { if (!cancelled) setLoading(false); }),
-    );
+      })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [pdfBlob]);
 

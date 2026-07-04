@@ -61,5 +61,8 @@ export function useHistory(initial) {
     redo,
     canUndo: state.index > 0,
     canRedo: state.index < state.history.length - 1,
+    // All live snapshots — lets callers know what undo/redo can still reach
+    // (e.g. to release resources referenced by no snapshot at all).
+    snapshots: state.history,
   };
 }

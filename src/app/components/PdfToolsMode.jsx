@@ -85,6 +85,7 @@ export default function PdfToolsMode({ isDark, isActive, onSwitchMode }) {
     redo,
     canUndo,
     canRedo,
+    snapshots: pageSnapshots,
   } = useHistory([]);
 
   const op = useAsyncOperation();
@@ -142,15 +143,37 @@ export default function PdfToolsMode({ isDark, isActive, onSwitchMode }) {
       ? restorable
       : null;
 
-  // Revoke any lingering preview URL and all thumb URLs on unmount
+  // Revoke any lingering preview URL and all thumb URLs, and release all
+  // pdf.js documents, on unmount
   useEffect(() => {
     const thumbUrls = thumbBlobUrlsRef.current;
+    const docs = docsRef.current;
     return () => {
       if (previewPdfUrlRef.current) URL.revokeObjectURL(previewPdfUrlRef.current);
       for (const url of thumbUrls) URL.revokeObjectURL(url);
       thumbUrls.clear();
+      for (const { pdfDoc } of docs.values()) pdfDoc.destroy().catch(() => {});
+      docs.clear();
     };
   }, []);
+
+  // Release pdf.js documents no pages reference anymore. A doc must stay
+  // loaded while ANY undo/redo snapshot can still restore pages from it
+  // (thumbs and export read it from docsRef), so a doc is only destroyed
+  // once every snapshot referencing it has aged out of the bounded history
+  // (delete-all followed by more edits, history trimming past its cap).
+  useEffect(() => {
+    const referenced = new Set();
+    for (const snapshot of pageSnapshots) {
+      for (const p of snapshot) referenced.add(p.srcDocId);
+    }
+    for (const [id, entry] of docsRef.current.entries()) {
+      if (!referenced.has(id)) {
+        docsRef.current.delete(id);
+        entry.pdfDoc.destroy().catch(() => {});
+      }
+    }
+  }, [pageSnapshots]);
 
   // Signature of user-visible edits (order, rotation, annotations). Thumbs
   // resolving in the background change the `pages` array identity but not
@@ -254,6 +277,12 @@ export default function PdfToolsMode({ isDark, isActive, onSwitchMode }) {
           setStep(`Loading ${file.name}...`);
           try {
             const pdfDoc = await loadPdfDocument(file);
+            if (pdfDoc.numPages === 0) {
+              pdfDoc.destroy().catch(() => {});
+              failures.push({ name: file.name, reason: 'PDF has no pages' });
+              setProgress(Math.round(((f + 1) / pdfFiles.length) * 100));
+              continue;
+            }
             const docId = `${Date.now()}-${f}-${Math.random().toString(36).slice(2, 8)}`;
             docsRef.current.set(docId, { name: file.name, file, pdfDoc });
             for (let p = 0; p < pdfDoc.numPages; p++) {
@@ -660,6 +689,7 @@ export default function PdfToolsMode({ isDark, isActive, onSwitchMode }) {
       }
     }, { initialStep: 'Building preview...' });
     if (!url) return;
+    if (previewPdfUrlRef.current) URL.revokeObjectURL(previewPdfUrlRef.current);
     previewPdfUrlRef.current = url;
     setPreviewPdfUrl(url);
     setShowPreview(true);
@@ -680,6 +710,7 @@ export default function PdfToolsMode({ isDark, isActive, onSwitchMode }) {
       }
     }, { initialStep: 'Building preview...' });
     if (!url) return;
+    if (previewPdfUrlRef.current) URL.revokeObjectURL(previewPdfUrlRef.current);
     previewPdfUrlRef.current = url;
     setPreviewPdfUrl(url);
     setShowPreview(true);

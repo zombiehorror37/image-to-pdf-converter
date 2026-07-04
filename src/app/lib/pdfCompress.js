@@ -130,41 +130,48 @@ export const compressPdf = async (
 
   const numPages = pdfDoc.numPages;
 
-  for (let i = 1; i <= numPages; i++) {
-    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+  // The pdf.js document (and its worker) must be released on every exit —
+  // success, abort, or render failure — or each compressed file leaks a
+  // full document for the rest of the session.
+  try {
+    for (let i = 1; i <= numPages; i++) {
+      if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
 
-    const page = await pdfDoc.getPage(i);
-    // getViewport's rotation parameter REPLACES the page's internal /Rotate,
-    // so fold the page's own rotation in to render it the way it displays.
-    const rotation = page.rotate || 0;
-    const baseViewport = page.getViewport({ scale: 1, rotation });
+      const page = await pdfDoc.getPage(i);
+      // getViewport's rotation parameter REPLACES the page's internal /Rotate,
+      // so fold the page's own rotation in to render it the way it displays.
+      const rotation = page.rotate || 0;
+      const baseViewport = page.getViewport({ scale: 1, rotation });
 
-    const targetWidth = Math.min(
-      Math.round((baseViewport.width / 72) * dpi),
-      MAX_RENDER_PX,
-    );
-    const { canvas } = await renderPageToCanvas(pdfDoc, i, targetWidth, rotation, {
-      devicePixelRatio: 1,
-    });
+      const targetWidth = Math.min(
+        Math.round((baseViewport.width / 72) * dpi),
+        MAX_RENDER_PX,
+      );
+      const { canvas } = await renderPageToCanvas(pdfDoc, i, targetWidth, rotation, {
+        devicePixelRatio: 1,
+      });
 
-    const jpegBytes = await canvasToJpegBytes(canvas, quality);
-    // Free the canvas backing store right away — large PDFs otherwise pile up
-    // many full-page bitmaps before GC catches up.
-    canvas.width = 0;
-    canvas.height = 0;
+      const jpegBytes = await canvasToJpegBytes(canvas, quality);
+      // Free the canvas backing store right away — large PDFs otherwise pile up
+      // many full-page bitmaps before GC catches up.
+      canvas.width = 0;
+      canvas.height = 0;
 
-    const img = await out.embedJpg(jpegBytes);
-    // Keep the page at its original point size so physical dimensions are
-    // unchanged; the rotated raster is drawn full-bleed.
-    const newPage = out.addPage([baseViewport.width, baseViewport.height]);
-    newPage.drawImage(img, {
-      x: 0,
-      y: 0,
-      width: baseViewport.width,
-      height: baseViewport.height,
-    });
+      const img = await out.embedJpg(jpegBytes);
+      // Keep the page at its original point size so physical dimensions are
+      // unchanged; the rotated raster is drawn full-bleed.
+      const newPage = out.addPage([baseViewport.width, baseViewport.height]);
+      newPage.drawImage(img, {
+        x: 0,
+        y: 0,
+        width: baseViewport.width,
+        height: baseViewport.height,
+      });
 
-    onProgress?.(i / numPages);
+      onProgress?.(i / numPages);
+    }
+  } finally {
+    pdfDoc.destroy().catch(() => {});
   }
 
   const bytes = await out.save({ useObjectStreams: true });
